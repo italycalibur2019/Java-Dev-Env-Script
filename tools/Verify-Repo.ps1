@@ -48,9 +48,41 @@ Write-Host "edition: $($PSVersionTable.PSEdition)"
 Write-Host "root   : $root"
 
 $utf8Strict = [Text.UTF8Encoding]::new($false, $true)
+$rel = { param($f) $f.FullName.Substring($rootPrefix.Length) }
+
+# Only check files that would actually be committed. Anything .gitignore'd
+# (node_modules, cache, logs, .tmp*) is skipped - otherwise a local
+# "npm install" would fail the BOM check on the .ps1 shims npm writes into
+# node_modules\.bin.
 $allFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force |
     Where-Object { $_.FullName -notmatch '\\\.git\\' })
-$rel = { param($f) $f.FullName.Substring($rootPrefix.Length) }
+$ignoredSet = @{}
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    try {
+        $relList = @($allFiles | ForEach-Object { & $rel $_ })
+        if ($relList.Count -gt 0) {
+            foreach ($line in @($relList | & git -C $root check-ignore --stdin 2>$null)) {
+                $key = ([string]$line).Trim()
+                if ($key) {
+                    $ignoredSet[$key] = $true
+                    $ignoredSet[$key.Replace('/', '\')] = $true
+                }
+            }
+        }
+    } catch {
+        Write-Soft "git check-ignore failed: $($_.Exception.Message)"
+    }
+}
+if ($ignoredSet.Count -gt 0) {
+    $allFiles = @($allFiles | Where-Object { -not $ignoredSet.ContainsKey((& $rel $_)) })
+} else {
+    # no git available - fall back to excluding the usual output folders
+    $allFiles = @($allFiles | Where-Object { $_.FullName -notmatch '\\(node_modules|cache|logs|\.tmp[^\\]*)\\' })
+}
+Write-Host "files  : $($allFiles.Count) (would be committed)"
+if ($allFiles.Count -eq 0) {
+    Write-Soft 'nothing to check - is every file in this tree gitignored?'
+}
 
 $ps1Files = @($allFiles | Where-Object { $_.Extension -eq '.ps1' })
 $cmdFiles = @($allFiles | Where-Object { $_.Extension -in @('.cmd', '.bat') })

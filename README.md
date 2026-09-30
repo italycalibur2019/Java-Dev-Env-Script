@@ -67,6 +67,7 @@ Java-Dev-Env-Script\
 │   └─ user.example.json           定制示例：复制为 user.json 即生效
 ├─ tools\Verify-Repo.ps1           提交前自检（BOM / 编码 / 语法 / JSON / 敏感信息）
 ├─ .github\workflows\verify.yml    CI：在 PowerShell 5.1 与 7 下各跑一遍自检
+├─ .github\ISSUE_TEMPLATE\         问题反馈 / 功能建议模板（会要求你贴 doctor 输出）
 ├─ .gitattributes                  禁止 Git 转换行尾与编码（BOM 必须原样保留）
 ├─ .gitignore                      忽略 config\user.json（可能含密码）与运行产物
 ├─ CHANGELOG.md / LICENSE / README.md

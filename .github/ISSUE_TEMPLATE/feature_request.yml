@@ -1,0 +1,48 @@
+name: 功能建议
+description: 希望支持新的组件、新的配置项，或改进现有行为
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提之前可以先翻一下 `config\user.example.json` 和 README 的「定制化」章节：
+        版本、镜像、端口、密码、快捷方式、组件开关、自定义 zip 软件（`components.extras`）
+        很多需求已经能直接通过配置解决 —— 如果配置能绕过，请说明它为什么不够好。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的场景
+      description: 在什么情况下觉得不方便？现在得手动做什么？
+      placeholder: 例如：团队新机器要预置一份内网 Nexus 的 Maven settings，现在每台都要手改
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的方案
+      description: 你希望脚本怎么做？如果能写出想要的配置长什么样就更好了
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 试过的替代方案
+      description: 现有配置能不能绕过？为什么不够用？
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 相关文档链接、截图、其他工具的做法等
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我搜索过已有 Issue 与 README，确认不是已支持的功能
+          required: true

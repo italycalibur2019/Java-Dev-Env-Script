@@ -1,0 +1,10 @@
+# 新建 Issue 时可选的入口（不会显示在模板列表里，但会显示成页面上的链接卡片）
+blank_issues_enabled: true # 想强制大家必须用模板，就改成 false
+
+contact_links:
+  - name: 先看 README 的「常见问题」
+    url: https://github.com/italycalibur2019/Java-Dev-Env-Script/blob/main/README.md#七常见问题
+    about: 下载失败、版本解析失败、双击一闪而过、中文乱码等问题已有解答
+  - name: 提交前先本地自检
+    url: https://github.com/italycalibur2019/Java-Dev-Env-Script/blob/main/tools/Verify-Repo.ps1
+    about: powershell -NoProfile -ExecutionPolicy Bypass -File tools\Verify-Repo.ps1
