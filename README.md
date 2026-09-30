@@ -1,5 +1,17 @@
 # Windows Java 开发环境一键配置（JavaDevEnv）
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6.svg?logo=windows&logoColor=white)
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B%20%7C%207.x-5391FE.svg?logo=powershell&logoColor=white)
+![Portable](https://img.shields.io/badge/install-portable-brightgreen.svg)
+![No admin](https://img.shields.io/badge/admin-not%20required-success.svg)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+<!-- CI 徽章先注释掉：本仓库目前是私有仓库，GitHub 对匿名请求的 badge.svg 返回 404（已实测），
+     放上去在 README 里就是一张裂图。等仓库转成公开后，把下面这一行从注释里拿出来即可。
+[![verify](https://github.com/italycalibur2019/Java-Dev-Env-Script/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/italycalibur2019/Java-Dev-Env-Script/actions/workflows/verify.yml)
+-->
+
 一套面向 Windows 的 PowerShell 脚本，用于在新机器上**快速搭好 Java 开发环境**：
 JDK、Maven、Git、Node.js、DSH（DeepSeek Harness 桌面端）、IntelliJ IDEA、PostgreSQL、Redis、DBeaver、HeidiSQL
 全部**绿色免安装**（解压即用；DSH 桌面端是官方安装包，会静默装到安装目录内），
@@ -66,10 +78,12 @@ Java-Dev-Env-Script\
 │   ├─ default.json                全部默认配置（版本、镜像、端口、密码、开关）
 │   └─ user.example.json           定制示例：复制为 user.json 即生效
 ├─ tools\Verify-Repo.ps1           提交前自检（BOM / 编码 / 语法 / JSON / 敏感信息）
+├─ docs\images\                    README 用的截图（需要哪些图见该目录下的 README.md）
 ├─ .github\workflows\verify.yml    CI：在 PowerShell 5.1 与 7 下各跑一遍自检
 ├─ .github\ISSUE_TEMPLATE\         问题反馈 / 功能建议模板（会要求你贴 doctor 输出）
 ├─ .gitattributes                  禁止 Git 转换行尾与编码（BOM 必须原样保留）
 ├─ .gitignore                      忽略 config\user.json（可能含密码）与运行产物
+├─ CONTRIBUTING.md                 贡献指南：编码铁律、PowerShell 踩坑清单、加组件步骤
 ├─ CHANGELOG.md / LICENSE / README.md
 ```
 
