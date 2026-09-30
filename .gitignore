@@ -1,0 +1,26 @@
+# 本机个性化配置：可能含你的密码、端口、私有路径，绝对不要提交
+/config/user.json
+/config/user.*.json
+!/config/user.example.json
+
+# 脚本运行产物（安装根目录里才会出现，防止有人用 -Root . 就地运行时误提交）
+/cache/
+/logs/
+/data/
+/*.log
+env-backup-*.json
+install-report-*.md
+
+# 临时与测试（注意 .tmp* 不加斜杠：既要匹配 .tmp-test/ 目录，也要匹配 .tmp-xxx.txt 文件）
+.tmp*
+tmp/
+*.tmp
+*.bak
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,100 @@
+{
+  "_说明": "把本文件复制为 config\\user.json 后按需修改；这里写到的每一项都会覆盖 config\\default.json 中的同路径配置（深度合并，未写的保持默认）。以 _ 开头的键仅作注释，空字符串表示“不覆盖”。",
+
+  "installRoot": "D:\\JavaDevEnv",
+  "existingPolicy": "prefer",
+  "preferMirrors": "auto",
+
+  "download": {
+    "proxy": "",
+    "retries": 3
+  },
+
+  "shortcuts": {
+    "desktop": true,
+    "startMenu": false,
+    "items": ["ide", "dbeaver", "heidisql", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo"]
+  },
+
+  "components": {
+    "jdk": {
+      "enabled": true,
+      "versions": [21],
+      "default": 21
+    },
+
+    "maven": {
+      "enabled": true,
+      "version": "3.9.9",
+      "settings": {
+        "mirror": "aliyun",
+        "localRepository": "user",
+        "overwriteExisting": false
+      }
+    },
+
+    "ide": {
+      "enabled": true,
+      "edition": "IC",
+      "version": "latest",
+      "portable": true,
+      "vmOptionsHeap": ""
+    },
+
+    "git": { "enabled": true, "version": "2.46.0" },
+    "node": { "enabled": true, "version": "20.18.0" },
+
+    "_dsh说明": "dsh 默认装官方桌面端（Electron 客户端）；命令行版是另一个组件 dsh-cli，需要终端里的 dsh web / dsh tui 再打开它",
+    "dsh": {
+      "enabled": true,
+      "version": "latest"
+    },
+
+    "dsh-cli": {
+      "enabled": false,
+      "version": "latest",
+      "registry": "https://registry.npmmirror.com"
+    },
+
+    "postgres": {
+      "enabled": true,
+      "version": "17.2",
+      "port": 5432,
+      "password": "postgres",
+      "databases": ["devdb"],
+      "createInstance": "auto",
+      "startAfterInstall": true,
+      "autostart": false
+    },
+
+    "redis": {
+      "enabled": true,
+      "port": 6379,
+      "password": "",
+      "maxmemory": "512mb",
+      "createInstance": "auto",
+      "startAfterInstall": true,
+      "autostart": false
+    },
+
+    "dbeaver": { "enabled": true, "portable": true },
+    "_数据库管理工具二选一": "dbeaver 与 heidisql 定位相同，默认只装 dbeaver；想换成轻量的 HeidiSQL 就按下面这样改",
+    "heidisql": { "enabled": false, "portable": true },
+
+    "_extras_示例": "自定义软件：url 指向 zip，dirName 是解压目录名，exe 用于校验安装是否成功",
+    "extras": [
+      {
+        "key": "vscode",
+        "name": "VS Code",
+        "enabled": false,
+        "url": "https://update.code.visualstudio.com/latest/win32-x64-archive/stable",
+        "fileName": "VSCode-win32-x64.zip",
+        "dirName": "VSCode",
+        "exe": "Code.exe",
+        "pathEntries": ["bin"],
+        "addToPath": true,
+        "shortcuts": [{ "name": "VS Code", "target": "Code.exe" }]
+      }
+    ]
+  }
+}

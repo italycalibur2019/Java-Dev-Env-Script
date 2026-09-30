@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "profile": "standard",
+  "profiles": {
+    "_说明": "full = 所有 enabled=true 的组件；standard 只是进一步缩小范围（组件是否安装由 components.<name>.enabled 决定）",
+    "minimal": ["jdk", "maven", "git"],
+    "standard": ["jdk", "maven", "ide", "git", "node", "dsh", "postgres", "redis", "dbeaver", "heidisql"],
+    "full": ["*"]
+  },
+
+  "installRoot": "D:\\JavaDevEnv",
+  "installRootFallback": ["E:\\JavaDevEnv", "C:\\JavaDevEnv", "%USERPROFILE%\\JavaDevEnv"],
+  "existingPolicy": "prefer",
+  "preferMirrors": "auto",
+  "stopOnError": false,
+
+  "download": {
+    "retries": 3,
+    "timeoutSeconds": 45,
+    "readTimeoutSeconds": 120,
+    "proxy": "",
+    "resume": true,
+    "useBitsFallback": true,
+    "keepArchives": true
+  },
+
+  "env": {
+    "setUserEnvVars": true,
+    "updateUserPath": true,
+    "backupBeforeChange": true,
+    "writeEnvScripts": true,
+    "mavenOpts": "-Dfile.encoding=UTF-8",
+    "forceJavaHome": false
+  },
+
+  "shortcuts": {
+    "enabled": true,
+    "desktop": true,
+    "startMenu": false,
+    "directory": "",
+    "items": ["ide", "dbeaver", "heidisql", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo"]
+  },
+
+  "logging": {
+    "enabled": true,
+    "level": "Info",
+    "keepDays": 30
+  },
+
+  "uninstall": {
+    "removeFiles": true,
+    "removeEnvVars": true,
+    "removeShortcuts": true,
+    "keepData": true
+  },
+
+  "components": {
+    "jdk": {
+      "enabled": true,
+      "vendor": "temurin",
+      "versions": [21],
+      "default": 21,
+      "dirTemplate": "jdk-{major}",
+      "assetsApi": "https://api.adoptium.net/v3/assets/latest/{major}/hotspot?architecture=x64&image_type=jdk&os=windows&vendor=eclipse",
+      "mirrorTemplates": [
+        "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/{major}/jdk/x64/windows/{fileName}",
+        "https://mirrors.huaweicloud.com/adoptium/{major}/jdk/x64/windows/{fileName}"
+      ]
+    },
+
+    "maven": {
+      "enabled": true,
+      "version": "3.9.9",
+      "dirTemplate": "apache-maven-{version}",
+      "urlTemplates": [
+        "https://mirrors.huaweicloud.com/apache/maven/maven-3/{version}/binaries/apache-maven-{version}-bin.zip",
+        "https://dlcdn.apache.org/maven/maven-3/{version}/binaries/apache-maven-{version}-bin.zip",
+        "https://archive.apache.org/dist/maven/maven-3/{version}/binaries/apache-maven-{version}-bin.zip",
+        "https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/{version}/binaries/apache-maven-{version}-bin.zip",
+        "https://mirrors.cloud.tencent.com/apache/maven/maven-3/{version}/binaries/apache-maven-{version}-bin.zip"
+      ],
+      "settings": {
+        "enable": true,
+        "mirror": "aliyun",
+        "overwriteExisting": false,
+        "localRepository": "user",
+        "portableRepoDir": "m2repo"
+      },
+      "mirrorUrls": {
+        "aliyun": "https://maven.aliyun.com/repository/public",
+        "huawei": "https://repo.huaweicloud.com/repository/maven",
+        "tencent": "https://mirrors.cloud.tencent.com/nexus/repository/maven-public",
+        "official": "https://repo1.maven.org/maven2"
+      }
+    },
+
+    "ide": {
+      "enabled": true,
+      "vendor": "jetbrains",
+      "edition": "IC",
+      "releaseCode": "",
+      "version": "latest",
+      "fallbackVersion": "2025.3",
+      "dirTemplate": "idea-{version}",
+      "releaseApi": "https://data.services.jetbrains.com/products/releases?code={code}&latest=true&type=release",
+      "urlTemplates": [
+        "https://download.jetbrains.com/idea/idea-{version}.win.zip",
+        "https://download.jetbrains.com/idea/ideaIC-{version}.win.zip",
+        "https://download.jetbrains.com/idea/ideaIU-{version}.win.zip",
+        "https://download-cdn.jetbrains.com/idea/idea-{version}.win.zip",
+        "https://download-cdn.jetbrains.com/idea/ideaIC-{version}.win.zip",
+        "https://download-cdn.jetbrains.com/idea/ideaIU-{version}.win.zip"
+      ],
+      "recentFallbackCount": 3,
+      "portable": true,
+      "vmOptionsHeap": ""
+    },
+
+    "git": {
+      "enabled": true,
+      "flavor": "mingit",
+      "version": "2.46.0",
+      "dirTemplate": "git-{version}",
+      "urlTemplates": [
+        "https://github.com/git-for-windows/git/releases/download/v{version}.windows.1/MinGit-{version}-64-bit.zip",
+        "https://mirrors.huaweicloud.com/git-for-windows/v{version}.windows.1/MinGit-{version}-64-bit.zip"
+      ]
+    },
+
+    "node": {
+      "enabled": true,
+      "version": "20.18.0",
+      "dirTemplate": "node-{version}",
+      "urlTemplates": [
+        "https://nodejs.org/dist/v{version}/node-v{version}-win-x64.zip",
+        "https://registry.npmmirror.com/-/binary/node/v{version}/node-v{version}-win-x64.zip"
+      ],
+      "npmRegistry": "https://registry.npmmirror.com",
+      "writeUserNpmrc": true
+    },
+
+    "dsh": {
+      "_说明": "DSH 桌面端（官方 Electron 客户端）。版本号默认从官方更新清单 nightly.yml 解析，解析失败才用 fallbackVersion。",
+      "enabled": true,
+      "version": "latest",
+      "fallbackVersion": "0.2.0-rc.2",
+      "feedUrl": "https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml",
+      "urlTemplates": [
+        "https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-{version}-win-x64.exe"
+      ],
+      "dirTemplate": "dsh-desktop",
+      "silentArgs": ["/S", "/currentuser"],
+      "installDirArg": "/D={dir}",
+      "runningProcess": "DeepSeek Harness",
+      "uninstallNamePattern": "DeepSeek Harness",
+      "existingOk": true
+    },
+
+    "dsh-cli": {
+      "_说明": "命令行版 dsh（npm 全局包）。官方已有桌面端，所以默认关闭；想要终端里的 dsh web / dsh tui / dsh headless 再设为 true。",
+      "enabled": false,
+      "package": "@deepseek-ai/dsh",
+      "version": "latest",
+      "registry": "https://registry.npmmirror.com",
+      "globalPrefix": "",
+      "existingOk": true
+    },
+
+    "postgres": {
+      "enabled": true,
+      "version": "17.2",
+      "build": "1",
+      "dirTemplate": "pgsql-{version}",
+      "urlTemplates": [
+        "https://get.enterprisedb.com/postgresql/postgresql-{version}-{build}-windows-x64-binaries.zip"
+      ],
+      "port": 5432,
+      "listenAddresses": "localhost",
+      "superuser": "postgres",
+      "password": "postgres",
+      "databases": ["devdb"],
+      "encoding": "UTF8",
+      "locale": "C",
+      "localeProvider": "",
+      "icuLocale": "",
+      "authMethod": "scram-sha-256",
+      "maxConnections": 100,
+      "sharedBuffers": "128MB",
+      "timezone": "Asia/Shanghai",
+      "createInstance": "auto",
+      "initData": true,
+      "startAfterInstall": true,
+      "autostart": false
+    },
+
+    "redis": {
+      "enabled": true,
+      "version": "latest",
+      "flavor": "msys2-service",
+      "dirTemplate": "redis-{version}",
+      "githubRepo": "redis-windows/redis-windows",
+      "assetPattern": "Redis-{version}-Windows-x64-msys2-with-Service.zip",
+      "tagPrefix": "",
+      "urlTemplates": [
+        "https://github.com/{repo}/releases/download/{tag}/{asset}"
+      ],
+      "mirrorTemplates": [],
+      "port": 6379,
+      "bind": "127.0.0.1",
+      "password": "",
+      "maxmemory": "512mb",
+      "maxmemoryPolicy": "allkeys-lru",
+      "appendonly": true,
+      "createInstance": "auto",
+      "startAfterInstall": true,
+      "autostart": false
+    },
+
+    "dbeaver": {
+      "_说明": "数据库管理工具（默认选项，功能更全、跨数据库）。与 heidisql 定位相同，二者只需其一。",
+      "enabled": true,
+      "version": "latest",
+      "dirTemplate": "dbeaver",
+      "urlTemplates": [
+        "https://dbeaver.io/files/dbeaver-ce-latest-win32.win32.x86_64.zip",
+        "https://dbeaver.io/files/{version}/dbeaver-ce-{version}-win32.win32.x86_64.zip"
+      ],
+      "portable": true
+    },
+
+    "heidisql": {
+      "_说明": "数据库管理工具（轻量替代品，约 28MB，原生启动快）。默认关闭；要用它请把本项改成 enabled=true 并把 dbeaver 改成 enabled=false。",
+      "enabled": false,
+      "version": "12.8",
+      "dirTemplate": "heidisql-{version}",
+      "urlTemplates": [
+        "https://www.heidisql.com/downloads/releases/HeidiSQL_{version}_64_Portable.zip"
+      ],
+      "portable": true
+    },
+
+    "extras": []
+  }
+}
