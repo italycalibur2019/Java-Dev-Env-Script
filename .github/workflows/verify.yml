@@ -3,12 +3,14 @@ name: verify
 # 守门 CI：这个项目的脚本对文件编码极其敏感，
 #   .ps1 缺 BOM  -> Windows PowerShell 5.1 按 GBK 解析中文，直接语法报错
 #   .cmd 带 BOM  -> cmd.exe 把 BOM 当命令的一部分
-# 所以这里在 Windows 上分别用 Windows PowerShell 5.1 和 PowerShell 7 各跑一遍 tools\Verify-Repo.ps1。
-# 5.1 那一遍才是关键——只有它会因为缺少 BOM 而失败。
+# 所以在同一台 runner 上分别用 Windows PowerShell 5.1 与 PowerShell 7 各跑一遍
+# tools\Verify-Repo.ps1。5.1 那一遍才是关键 —— 只有它会因为缺少 BOM 而失败。
+#
+# 两个解释器都由 GitHub 的 windows runner 镜像预装，仓库不需要做任何额外配置；
+# 本地机器上没装 PowerShell 7 也不影响 CI（只在你想本地复现时才需要）。
 
 on:
   push:
-    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -24,7 +26,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify with Windows PowerShell 5.1
+      - name: Show installed PowerShell versions
+        shell: cmd
+        run: |
+          echo --- Windows PowerShell ---
+          powershell.exe -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
+          echo --- PowerShell ---
+          pwsh -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
+
+      - name: Verify with Windows PowerShell 5.1 (catches missing BOM)
         shell: cmd
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools\Verify-Repo.ps1
 
