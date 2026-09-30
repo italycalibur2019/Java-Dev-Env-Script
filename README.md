@@ -7,10 +7,7 @@
 ![No admin](https://img.shields.io/badge/admin-not%20required-success.svg)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-<!-- CI 徽章先注释掉：本仓库目前是私有仓库，GitHub 对匿名请求的 badge.svg 返回 404（已实测），
-     放上去在 README 里就是一张裂图。等仓库转成公开后，把下面这一行从注释里拿出来即可。
 [![verify](https://github.com/italycalibur2019/Java-Dev-Env-Script/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/italycalibur2019/Java-Dev-Env-Script/actions/workflows/verify.yml)
--->
 
 一套面向 Windows 的 PowerShell 脚本，用于在新机器上**快速搭好 Java 开发环境**：
 JDK、Maven、Git、Node.js、DSH（DeepSeek Harness 桌面端）、IntelliJ IDEA、PostgreSQL、Redis、DBeaver、HeidiSQL
