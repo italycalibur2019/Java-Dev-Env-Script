@@ -65,7 +65,11 @@ Java-Dev-Env-Script\
 ├─ config\
 │   ├─ default.json                全部默认配置（版本、镜像、端口、密码、开关）
 │   └─ user.example.json           定制示例：复制为 user.json 即生效
-└─ README.md
+├─ tools\Verify-Repo.ps1           提交前自检（BOM / 编码 / 语法 / JSON / 敏感信息）
+├─ .github\workflows\verify.yml    CI：在 PowerShell 5.1 与 7 下各跑一遍自检
+├─ .gitattributes                  禁止 Git 转换行尾与编码（BOM 必须原样保留）
+├─ .gitignore                      忽略 config\user.json（可能含密码）与运行产物
+├─ CHANGELOG.md / LICENSE / README.md
 ```
 
 安装后的目录（默认 `D:\JavaDevEnv`）：
@@ -401,6 +405,11 @@ uninstall.cmd -NoEnv                                 # 只删文件
   永久阻塞（症状就是脚本卡在“启动 PostgreSQL”），因此对它使用输出直通（`-InheritConsole`），
   并用 `pg_isready` 的实际连通性作为启动成功判据。
 - **安全**：默认不写系统目录、不写 HKLM；卸载时只删除「指向安装根目录内」的 PATH/环境变量项。
+
+- **CI 守门**：`.github/workflows/verify.yml` 在 `windows-latest` 上分别用 Windows PowerShell 5.1 与
+  PowerShell 7 跑一遍 `tools\Verify-Repo.ps1`。**5.1 那一遍才是关键** —— 只有它会因为缺少 BOM
+  而把中文读成 GBK 并报语法错；`.gitattributes` 的 `* -text` 则保证 clone 后字节不变。
+  本地提交前先跑：`powershell -NoProfile -ExecutionPolicy Bypass -File tools\Verify-Repo.ps1`
 
 ---
 

@@ -1,0 +1,62 @@
+# 更新日志
+
+版本号遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)，
+变更记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+
+## [未发布]
+
+## [1.0.0] - 2026-09-30
+
+首个公开版本。
+
+### 新增 · 组件
+
+- **JDK**：Temurin（Adoptium API 取最新 GA，默认 21，支持多版本共存），写入 `JAVA_HOME` 与 `JAVA_HOME_<大版本>`
+- **Maven 3.9.9**：多镜像回退，自动生成 `settings.xml`（可切阿里云镜像、可选本地仓库位置）
+- **Git 2.46.0**：MinGit 免安装版，只把 `cmd\` 加进 PATH，不污染系统 Git
+- **Node.js 20.18.0**：可切 npmmirror 源，可选写用户级 `.npmrc`
+- **DSH（DeepSeek Harness）**：默认安装官方**桌面端**，版本从官方更新清单 `nightly.yml` 解析，
+  静默装到安装目录并复用已有安装；可选组件 `dsh-cli` 提供终端 `dsh web` / `dsh tui` / `dsh headless`
+- **IntelliJ IDEA**：官方 `windowsZip`（默认社区版，可切 Ultimate），自动生成便携模式配置
+- **PostgreSQL 17.2**：免安装二进制 + `initdb` 本地实例，端口被占用时自动顺延，脚本启停、可选开机自启
+- **Redis 8.10.2**：Windows 构建，配置文件由参数生成，脚本启停
+- **DBeaver CE**（默认）/ **HeidiSQL**（默认关闭，两者定位相同，二选一）
+- **自定义软件**：`components.extras` 可加入任意 zip 包
+
+### 新增 · 安装流程
+
+- 版本动态解析：JetBrains API / Adoptium API / GitHub Release / 官方更新清单，逐级回退到本地缓存与配置里的兜底版本
+- 下载：流式下载 + `Range` 断点续传 + 多镜像自动切换 + BITS 兜底；HEAD 预检会列出每个候选地址的探测结果
+- 已有安装探测复用：环境变量 → PATH → 注册表 → 各磁盘常见目录；`existingPolicy=prefer` 时直接复用，不往别人的安装目录写文件
+- 用户级环境变量与 PATH 管理：写入前自动备份、支持回滚，托管配置块可重复写入而不重复
+- 数据库实例初始化与建库、连接信息汇总，且只在“二进制由本工具安装”时才创建实例
+
+### 新增 · 定制化
+
+- `config/user.json` 与 `config/default.json` 深度合并，可覆盖版本、镜像、端口、密码、快捷方式、组件开关
+- 组件组合：`minimal` / `standard` / `full` 或自定义 profile；`-Components` 支持按 key 或分组名选择，并自动补齐依赖
+- 快捷方式可自定义名称、图标、窗口样式与生成目录；数据库可随登录自动启动
+
+### 新增 · 运维
+
+- `status` 环境状态、`doctor` 自检（可执行文件版本、网络连通性、端口、长路径）
+- `uninstall` 卸载/回滚：会先调用组件自带的卸载程序（如 DSH 桌面端），可保留数据库数据
+- `restore` 从环境变量备份文件回滚
+- 安装报告与运行日志统一落到 `<root>\logs\`
+
+### 新增 · 工程约束
+
+- 编码守门：`.ps1` 必须带 UTF-8 BOM、`.cmd` 必须无 BOM；`.gitattributes` 声明 `* -text`，
+  禁止 Git 做任何行尾/编码转换，保证 clone 下来的字节与仓库完全一致
+- `tools/Verify-Repo.ps1`：提交前自检（BOM、严格 UTF-8、语法解析、JSON、个人路径/令牌扫描、`config/user.json` 是否被忽略）
+- GitHub Actions 在 `windows-latest` 上分别用 Windows PowerShell 5.1 与 PowerShell 7 各跑一遍自检
+
+### 已知限制
+
+- 仅支持 Windows 10 / 11 / Server 2019+ 与 Windows PowerShell 5.1+，未在 Linux / macOS 上验证
+- 数据库启停依赖官方 `pg_ctl`；在提权会话中 PostgreSQL 官方限制可能导致实例无法启动
+- DSH 桌面端是官方 NSIS 安装包，会在“添加/删除程序”里登记，不具备纯绿色形态（脚本会在卸载时一并清理）
+- 需要管理员权限的场景（系统级环境变量、Windows 服务）不在本工具范围内，默认全部只写当前用户
+
+[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.0.0
