@@ -22,6 +22,10 @@ JDK、Maven、Git、Node.js、DSH（DeepSeek Harness 桌面端）、IntelliJ IDE
 - 脚本会自动**探测并复用**机器上已有的组件，不会盲目重复下载
 - 所有版本、镜像、端口、密码、快捷方式都可通过 JSON 配置定制
 
+![安装计划](docs/images/hero-plan.png)
+
+*`install.cmd -DryRun`：动手前先看清每个组件解析到的版本、是「复用已有」还是「安装」、以及装到哪个目录。*
+
 ---
 
 ## 一、快速开始
@@ -35,6 +39,10 @@ install.cmd
 
 脚本会自动完成：解析版本 → 下载（缺什么下什么）→ 解压到安装目录 → 写环境变量 →
 生成桌面快捷方式 → 初始化并启动数据库 → 输出安装报告。
+
+![安装过程](docs/images/install-running.png)
+
+*安装过程：多镜像下载（带进度与断点续传）、逐组件解压、写入用户级 PATH。*
 
 安装完成后**新开一个终端**验证：
 
@@ -50,6 +58,24 @@ DSH 桌面端不用命令行验证：双击桌面的 **DSH 桌面端** 图标即
 
 > 想先看看会做什么，而不做任何改动：`install.cmd -DryRun`
 > 想自己挑组件：`menu.cmd`（交互式）或 `install.cmd -Components jdk,maven,git`
+
+### 界面预览
+
+![交互式选择组件](docs/images/menu.png)
+
+*`menu.cmd`：交互式挑选组件（`*` 为推荐项，也可用 `-Components` 直接指定）。*
+
+![环境自检](docs/images/doctor.png)
+
+*`doctor.cmd`：逐项自检给出通过/警告，出问题时先跑它。*
+
+![桌面快捷方式](docs/images/shortcuts.png)
+
+*桌面快捷方式：数据库启停、命令行、开发环境终端、安装目录、连接信息。*
+
+![数据库连接信息](docs/images/db-info.png)
+
+*生成的「数据库连接信息.txt」：JDBC URL、账号密码、Spring Boot 配置片段可直接粘贴。*
 
 ### 命令入口
 
