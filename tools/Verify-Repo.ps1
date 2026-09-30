@@ -56,25 +56,20 @@ $rel = { param($f) $f.FullName.Substring($rootPrefix.Length) }
 # node_modules\.bin.
 $allFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force |
     Where-Object { $_.FullName -notmatch '\\\.git\\' })
-$ignoredSet = @{}
+$keepSet = @{}
 if (Get-Command git -ErrorAction SilentlyContinue) {
     try {
-        $relList = @($allFiles | ForEach-Object { & $rel $_ })
-        if ($relList.Count -gt 0) {
-            foreach ($line in @($relList | & git -C $root check-ignore --stdin 2>$null)) {
-                $key = ([string]$line).Trim()
-                if ($key) {
-                    $ignoredSet[$key] = $true
-                    $ignoredSet[$key.Replace('/', '\')] = $true
-                }
-            }
+        # Canonical "files git would commit": tracked + untracked-but-not-ignored.
+        foreach ($line in @(& git -C $root -c core.quotepath=false ls-files --cached --others --exclude-standard 2>$null)) {
+            $key = ([string]$line).Trim()
+            if ($key) { $keepSet[($key -replace '/', '\')] = $true }
         }
     } catch {
-        Write-Soft "git check-ignore failed: $($_.Exception.Message)"
+        Write-Soft "git ls-files failed: $($_.Exception.Message)"
     }
 }
-if ($ignoredSet.Count -gt 0) {
-    $allFiles = @($allFiles | Where-Object { -not $ignoredSet.ContainsKey((& $rel $_)) })
+if ($keepSet.Count -gt 0) {
+    $allFiles = @($allFiles | Where-Object { $keepSet.ContainsKey((& $rel $_)) })
 } else {
     # no git available - fall back to excluding the usual output folders
     $allFiles = @($allFiles | Where-Object { $_.FullName -notmatch '\\(node_modules|cache|logs|\.tmp[^\\]*)\\' })
