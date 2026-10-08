@@ -69,6 +69,7 @@ function Get-StatusColor {
 # ---------------------------------------------------------------------------
 function Resolve-SelectedComponents {
     param([hashtable]$Config, [array]$Catalog, [string[]]$Components, [string]$Profile)
+    if (-not $Catalog) { return @() }
     $selected = $null
     if ($Components -and $Components.Count -gt 0) {
         $selected = @($Components)
@@ -91,7 +92,8 @@ function Resolve-SelectedComponents {
         }
     }
     # 支持用组件 key（jdk21）或分组名（jdk）来选择，例如 -Components jdk 会选中所有 JDK 版本
-    return @($Catalog | Where-Object {
+    return @(@($Catalog) | Where-Object {
+            if ($null -eq $_) { return $false }
             if ($keys -contains $_.Key) { return $true }
             if ($_.ContainsKey('Group') -and $_.Group -and ($keys -contains $_.Group)) { return $true }
             return $false
@@ -107,7 +109,7 @@ function Show-InteractiveMenu {
         $index++
         $keys += $spec.Key
         $mark = '  '
-        if ($spec.Group -in @('jdk', 'build', 'base', 'database', 'dbtool', 'ide', 'dsh')) { $mark = ' *' }
+        if ($spec.Group -in @('jdk', 'build', 'base', 'database', 'dbtool', 'ide', 'dsh', 'ssh', 'apitool', 'redisgui')) { $mark = ' *' }
         Write-TableRow -Col1 "$index) $($spec.Name)" -Col2 $mark -Col3 '' -Color 'Gray' -W1 44 -W2 4
     }
     Write-Host ''
@@ -292,8 +294,9 @@ function Invoke-InstallAction {
         }
     }
 
-    # 同类工具提醒：DBeaver 与 HeidiSQL 定位相同，同时装纯属浪费
-    foreach ($groupKey in @('dbtool')) {
+    # 同类工具提醒：dbtool（DBeaver/HeidiSQL）、ssh、apitool、redisgui 内的工具定位相同，
+    # 同时装多纯属浪费
+    foreach ($groupKey in @('dbtool', 'ssh', 'apitool', 'redisgui')) {
         $members = @($catalog | Where-Object { $_.Group -eq $groupKey })
         if ($members.Count -le 1) { continue }
         $names = ($members | ForEach-Object { $_.Name }) -join '、'
@@ -498,6 +501,21 @@ function Write-InstallSummary {
 }
 
 # ---------------------------------------------------------------------------
+# 开机自启
+# ---------------------------------------------------------------------------
+function Invoke-AutostartAction {
+    # 单独应用开机自启配置：在 config\user.json 里调整 components.*.autostart 后，
+    # 运行 install.cmd -Action autostart 即可生效，无需重跑完整安装。
+    param([hashtable]$Config, [hashtable]$Resolved)
+    Write-Section '开机自启配置 (autostart)'
+    $catalog = Get-ComponentCatalog -Config $Config -Resolved $Resolved
+    $count = Register-Autostart -Catalog @($catalog)
+    if ($count -eq 0) { Write-Info '没有设置新的自启项（对应开关未打开，或启动目标尚未安装）' }
+    Write-Host ('  「启动」文件夹: ' + [Environment]::GetFolderPath('Startup')) -ForegroundColor DarkGray
+    Write-Host '  说明: PostgreSQL / Redis 用静默脚本拉起；DSH 桌面端直接指向其主程序。' -ForegroundColor DarkGray
+}
+
+# ---------------------------------------------------------------------------
 # 状态
 # ---------------------------------------------------------------------------
 function Invoke-StatusAction {
@@ -678,6 +696,21 @@ function Invoke-DoctorAction {
     }
 
     Write-Host ''
+    # ---- 开机自启（登录时由「启动」文件夹拉起） ----
+    $startupDir = [Environment]::GetFolderPath('Startup')
+    foreach ($pair in @(
+            @('JavaDevEnv-PostgreSQL.lnk', 'PostgreSQL 自启'),
+            @('JavaDevEnv-Redis.lnk', 'Redis 自启'),
+            @('JavaDevEnv-DSH.lnk', 'DSH 桌面端自启'))) {
+        $lnkPath = Join-Path $startupDir $pair[0]
+        if (Test-Path -LiteralPath $lnkPath) {
+            Add-Check $pair[1] '通过' '已设置（登录后自动拉起）'
+        } else {
+            Add-Check $pair[1] '跳过' '未设置（components.*.autostart=false 或未安装）'
+        }
+    }
+
+    Write-Host ''
     # ---- 端口 ----
     foreach ($spec in @($catalog | Where-Object { $_.Key -eq 'postgres' -or $_.Key -eq 'redis' })) {
         $port = 0
@@ -717,6 +750,9 @@ function Invoke-UninstallAction {
     if ($removeShortcuts) {
         $n = Remove-ShortcutsUnderRoot -Root $root
         Write-Info "已清理快捷方式 $n 个"
+        # 开机自启项不看配置开关，卸载时一律移除
+        $autoRemoved = Unregister-Autostart
+        if ($autoRemoved -gt 0) { Write-Info "已清理开机自启项 $autoRemoved 个" }
     }
 
     if ($removeEnv) {

@@ -5,6 +5,32 @@
 
 ## [未发布]
 
+### 新增 · 组件
+
+- **WindTerm**（SSH/SFTP 远程管理终端）：开源便携 zip，版本从 GitHub Release 实时解析，解压即用
+- **Apifox**（API 设计/调试/测试一体化）：官方固定 latest 链接；官方 zip 内是 NSIS 安装器，
+  新增 `zipWrapped` 安装器形态——解壳后以 `/S /currentuser /D=` 静默装进安装目录
+- **Tiny RDM**（Redis 可视化管理）：约 12MB 便携 zip，版本从 GitHub Release 实时解析，解压即用
+- 三个新组件默认启用并进入 `standard` profile 与默认桌面快捷方式清单；同组工具会给出"同类提醒"（ssh / apitool / redisgui 分组）
+
+### 新增 · 开机自启
+
+- **PostgreSQL / Redis 开机自启默认开启**（登录时经「启动」文件夹静默拉起，全程无需管理员）：
+  新增专用静默脚本 `pg-autostart.cmd` / `redis-autostart.cmd`（无 pause、无交互提示，失败不挂住登录流程）
+- **DSH 桌面端支持开机自启**（`components.dsh.autostart`，默认关闭）
+- 新增独立动作 `install.cmd -Action autostart`：改完 `user.json` 的自启开关后单独应用，无需重跑完整安装
+- 开关语义完善：`autostart` 改为 `false` 后重跑即移除「启动」文件夹里的旧条目；`uninstall` 一并清理；`doctor` 增加自启检查项
+
+### 变更 · 图标
+
+- PostgreSQL / Redis 启停快捷方式换用合成图标：官方 logo 为主体、右下角叠加 Windows 风格
+  启动（绿）/ 停止（红）角标；成品 `.ico` 内置 16–256 全尺寸，随安装复制到 `<root>\icons\`
+- 图标素材与生成脚本归档在 `assets\icons\src\`（PostgreSQL 官方大象 PNG + Redis 官方 logo ico + Pillow 脚本），可复现
+
+### 变更 · 引擎
+
+- GitHub Release 解析逻辑从 redis 专属重构为通用形态（`githubRepo` + `assetPattern` + `tagPrefix`），新组件零成本接入
+
 ## [1.0.0] - 2026-09-30
 
 首个公开版本。

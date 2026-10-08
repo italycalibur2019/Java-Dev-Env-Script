@@ -4,7 +4,7 @@
   "profiles": {
     "_说明": "full = 所有 enabled=true 的组件；standard 只是进一步缩小范围（组件是否安装由 components.<name>.enabled 决定）",
     "minimal": ["jdk", "maven", "git"],
-    "standard": ["jdk", "maven", "ide", "git", "node", "dsh", "postgres", "redis", "dbeaver", "heidisql"],
+    "standard": ["jdk", "maven", "ide", "git", "node", "dsh", "postgres", "redis", "dbeaver", "heidisql", "windterm", "apifox", "tinyrdm"],
     "full": ["*"]
   },
 
@@ -38,7 +38,7 @@
     "desktop": true,
     "startMenu": false,
     "directory": "",
-    "items": ["ide", "dbeaver", "heidisql", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo"]
+    "items": ["ide", "dbeaver", "heidisql", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo", "windterm", "apifox", "tinyrdm"]
   },
 
   "logging": {
@@ -140,10 +140,11 @@
     },
 
     "dsh": {
-      "_说明": "DSH 桌面端（官方 Electron 客户端）。版本号默认从官方更新清单 nightly.yml 解析，解析失败才用 fallbackVersion。",
+      "_说明": "DSH 桌面端（官方 Electron 客户端）。版本号默认从官方更新清单 nightly.yml 解析，解析失败才用 fallbackVersion。autostart=true 时登录后自动启动桌面端。",
       "enabled": true,
       "version": "latest",
       "fallbackVersion": "0.2.0-rc.2",
+      "autostart": false,
       "feedUrl": "https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml",
       "urlTemplates": [
         "https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-{version}-win-x64.exe"
@@ -190,7 +191,7 @@
       "createInstance": "auto",
       "initData": true,
       "startAfterInstall": true,
-      "autostart": false
+      "autostart": true
     },
 
     "redis": {
@@ -213,7 +214,7 @@
       "appendonly": true,
       "createInstance": "auto",
       "startAfterInstall": true,
-      "autostart": false
+      "autostart": true
     },
 
     "dbeaver": {
@@ -237,6 +238,52 @@
         "https://www.heidisql.com/downloads/releases/HeidiSQL_{version}_64_Portable.zip"
       ],
       "portable": true
+    },
+
+    "windterm": {
+      "_说明": "SSH/SFTP 远程管理终端（开源免费，便携 zip 约 32MB）。版本号从 GitHub Release 实时解析，解析失败才用 fallbackVersion。",
+      "enabled": true,
+      "version": "latest",
+      "fallbackVersion": "2.7.0",
+      "githubRepo": "kingToolbox/WindTerm",
+      "assetPattern": "WindTerm_{version}_Windows_Portable_x86_64.zip",
+      "tagPrefix": "",
+      "dirTemplate": "windterm-{version}",
+      "urlTemplates": [
+        "https://github.com/{repo}/releases/download/{tag}/{asset}"
+      ],
+      "mirrorTemplates": []
+    },
+
+    "apifox": {
+      "_说明": "API 设计/调试/测试一体化工具。官方 Windows zip 里是 NSIS 安装器（zipWrapped=true），脚本会解壳后用 /S /currentuser /D= 静默装到安装目录；缓存命中旧包时可用 -Force 重新下载。",
+      "enabled": true,
+      "version": "latest",
+      "dirTemplate": "apifox",
+      "urlTemplates": [
+        "https://file-assets.apifox.com/download/Apifox-windows-latest.zip"
+      ],
+      "zipWrapped": true,
+      "innerInstaller": "",
+      "silentArgs": ["/S", "/currentuser"],
+      "installDirArg": "/D={dir}",
+      "runningProcess": "Apifox",
+      "uninstallNamePattern": "Apifox"
+    },
+
+    "tinyrdm": {
+      "_说明": "轻量 Redis 可视化管理工具（便携 zip 约 12MB）。版本号从 GitHub Release 实时解析，解析失败才用 fallbackVersion。",
+      "enabled": true,
+      "version": "latest",
+      "fallbackVersion": "1.2.7",
+      "githubRepo": "tiny-craft/tiny-rdm",
+      "assetPattern": "TinyRDM_Portable_{version}_windows_x64.zip",
+      "tagPrefix": "v",
+      "dirTemplate": "tinyrdm-{version}",
+      "urlTemplates": [
+        "https://github.com/{repo}/releases/download/{tag}/{asset}"
+      ],
+      "mirrorTemplates": []
     },
 
     "extras": []

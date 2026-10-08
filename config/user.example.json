@@ -13,7 +13,7 @@
   "shortcuts": {
     "desktop": true,
     "startMenu": false,
-    "items": ["ide", "dbeaver", "heidisql", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo"]
+    "items": ["ide", "dbeaver", "heidisql", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo", "windterm", "apifox", "tinyrdm"]
   },
 
   "components": {
@@ -44,10 +44,11 @@
     "git": { "enabled": true, "version": "2.46.0" },
     "node": { "enabled": true, "version": "20.18.0" },
 
-    "_dsh说明": "dsh 默认装官方桌面端（Electron 客户端）；命令行版是另一个组件 dsh-cli，需要终端里的 dsh web / dsh tui 再打开它",
+    "_dsh说明": "dsh 默认装官方桌面端（Electron 客户端）；命令行版是另一个组件 dsh-cli，需要终端里的 dsh web / dsh tui 再打开它。autostart=true 时登录后自动启动桌面端",
     "dsh": {
       "enabled": true,
-      "version": "latest"
+      "version": "latest",
+      "autostart": false
     },
 
     "dsh-cli": {
@@ -64,7 +65,7 @@
       "databases": ["devdb"],
       "createInstance": "auto",
       "startAfterInstall": true,
-      "autostart": false
+      "autostart": true
     },
 
     "redis": {
@@ -74,12 +75,29 @@
       "maxmemory": "512mb",
       "createInstance": "auto",
       "startAfterInstall": true,
-      "autostart": false
+      "autostart": true
     },
 
     "dbeaver": { "enabled": true, "portable": true },
     "_数据库管理工具二选一": "dbeaver 与 heidisql 定位相同，默认只装 dbeaver；想换成轻量的 HeidiSQL 就按下面这样改",
     "heidisql": { "enabled": false, "portable": true },
+
+    "windterm": {
+      "_说明": "SSH/SFTP 远程管理终端（开源，便携 zip）。默认 version=latest 从 GitHub Release 解析；内网无法访问 GitHub 时写死版本号并确认缓存里已有安装包",
+      "enabled": true,
+      "version": "latest"
+    },
+
+    "apifox": {
+      "_说明": "API 设计/调试/测试一体化工具。官方 zip 里是静默安装器，脚本解壳后用 /S /currentuser /D= 装进安装目录；缓存命中旧包时可删掉 cache\\Apifox-windows-latest.zip 或用 -Force 重下",
+      "enabled": true
+    },
+
+    "tinyrdm": {
+      "_说明": "轻量 Redis 可视化管理工具（便携 zip 约 12MB）。默认 version=latest 从 GitHub Release 解析",
+      "enabled": true,
+      "version": "latest"
+    },
 
     "_extras_示例": "自定义软件：url 指向 zip，dirName 是解压目录名，exe 用于校验安装是否成功",
     "extras": [

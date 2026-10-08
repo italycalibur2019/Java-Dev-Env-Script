@@ -24,3 +24,6 @@ tmp/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# 图标素材投递目录（正式素材与生成脚本已归档到 assets/icons/src）
+/ico/

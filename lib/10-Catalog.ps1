@@ -212,6 +212,30 @@ function Get-DetectionRules {
             HomeProbe = 'heidisql.exe'
             VersionCmd = @()
         }
+        windterm = @{
+            Commands  = @('WindTerm.exe')
+            EnvVars   = @()
+            Consumers = @('%ProgramFiles%\WindTerm*', 'D:\WindTerm*', 'C:\WindTerm*', 'D:\Dev\WindTerm*')
+            NameGlobs = @('WindTerm*', 'windterm*')
+            HomeProbe = 'WindTerm.exe'
+            VersionCmd = @()
+        }
+        apifox = @{
+            Commands  = @('Apifox.exe')
+            EnvVars   = @()
+            Consumers = @('%ProgramFiles%\Apifox*', '%LOCALAPPDATA%\Programs\Apifox*', 'D:\Apifox*', 'C:\Apifox*')
+            NameGlobs = @('Apifox*', 'apifox*')
+            HomeProbe = 'Apifox.exe'
+            VersionCmd = @()
+        }
+        tinyrdm = @{
+            Commands  = @()
+            EnvVars   = @()
+            Consumers = @('%ProgramFiles%\TinyRDM*', 'D:\TinyRDM*', 'C:\TinyRDM*', 'D:\Tiny RDM*')
+            NameGlobs = @('TinyRDM*', 'Tiny RDM*', 'tinyrdm*')
+            HomeProbe = 'Tiny RDM.exe'
+            VersionCmd = @()
+        }
         dsh = @{
             # DSH 桌面端（Electron + NSIS 安装包）：程序名带空格、不在 PATH 上，
             # 主要靠“卸载登记表 + 常见目录”发现；HomeProbe 同时也充当注册表条目的过滤器。
@@ -613,37 +637,41 @@ function Resolve-DynamicVersions {
         $resolved['ide'] = $info
     }
 
-    # ---------------- Redis （GitHub Release） ----------------
-    $redis = Get-ComponentConfig -Name 'redis'
-    if ($redis.ContainsKey('enabled') -and $redis.enabled) {
-        $ver = [string]$redis.version
+    # ---------------- GitHub Release 类组件（redis / windterm / tinyrdm） ----------------
+    # 这类组件的配置结构完全一致：githubRepo + assetPattern + tagPrefix + urlTemplates/mirrorTemplates，
+    # 差别只在 tag 是否带 v 前缀（WindTerm 用裸版本号 2.7.0，Tiny RDM 用 v1.2.7）。
+    foreach ($ghName in @('redis', 'windterm', 'tinyrdm')) {
+        $gh = Get-ComponentConfig -Name $ghName
+        if (-not ($gh.ContainsKey('enabled') -and $gh.enabled)) { continue }
+        if ([string]::IsNullOrWhiteSpace([string](Get-ObjectProperty -Object $gh -Name 'githubRepo' -Default ''))) { continue }
+        $ver = [string]$gh.version
         $info = @{ Version = $ver; Urls = @(); FileName = ''; Size = 0 }
         if ($ver -eq 'latest' -and -not $offline) {
             try {
-                $api = "https://api.github.com/repos/$($redis.githubRepo)/releases/latest"
-                Write-Debug2 "解析 Redis 最新版本: $api"
+                $api = "https://api.github.com/repos/$($gh.githubRepo)/releases/latest"
+                Write-Debug2 "解析 $ghName 最新版本: $api"
                 $rel = Get-RestJson -Url $api
                 $tag = [string](Get-ObjectProperty -Object $rel -Name 'tag_name')
                 if ($tag) { $ver = $tag.TrimStart('v') }
             } catch {
-                Write-Warn "获取 Redis 版本信息失败: $($_.Exception.Message)"
+                Write-Warn "获取 $ghName 版本信息失败: $($_.Exception.Message)"
             }
         }
-        if ($ver -eq 'latest' -and $cache.ContainsKey('redis')) {
-            $cachedRedis = $cache['redis']
-            if ($cachedRedis.Version -and $cachedRedis.Version -ne 'latest') {
-                Write-Info "使用缓存的 Redis 版本信息（$($cachedRedis.Version)）"
-                $ver = $cachedRedis.Version
+        if ($ver -eq 'latest' -and $cache.ContainsKey($ghName)) {
+            $cachedInfo = $cache[$ghName]
+            if ($cachedInfo.Version -and $cachedInfo.Version -ne 'latest') {
+                Write-Info "使用缓存的 $ghName 版本信息（$($cachedInfo.Version)）"
+                $ver = $cachedInfo.Version
             }
         }
-        $asset = Format-ComponentTemplate -Template ([string]$redis.assetPattern) -Values @{ version = $ver }
-        $tagValue = "$($redis.tagPrefix)$ver"
-        $urls = Expand-TemplateList -Templates $redis.urlTemplates -Values @{ repo = $redis.githubRepo; tag = $tagValue; asset = $asset; version = $ver }
+        $asset = Format-ComponentTemplate -Template ([string]$gh.assetPattern) -Values @{ version = $ver }
+        $tagValue = "$($gh.tagPrefix)$ver"
         $info.Version = $ver
         $info.FileName = $asset
-        $info.Urls = $urls
-        $info.MirrorUrls = Expand-TemplateList -Templates $redis.mirrorTemplates -Values @{ repo = $redis.githubRepo; tag = $tagValue; asset = $asset; version = $ver }
-        $resolved['redis'] = $info
+        $info.Urls = Expand-TemplateList -Templates $gh.urlTemplates -Values @{ repo = $gh.githubRepo; tag = $tagValue; asset = $asset; version = $ver }
+        $info.MirrorUrls = Expand-TemplateList -Templates $gh.mirrorTemplates -Values @{ repo = $gh.githubRepo; tag = $tagValue; asset = $asset; version = $ver }
+        Write-Info ("{0} 版本: {1}（GitHub Release）" -f $ghName, $ver)
+        $resolved[$ghName] = $info
     }
 
     # ---------------- dsh 桌面端 （官方更新清单） ----------------
@@ -993,6 +1021,77 @@ function Get-ComponentCatalog {
         [void]$catalog.Add($spec)
     }
 
+    # ---------------- WindTerm（SSH 终端） ----------------
+    $windtermCfg = Get-ComponentConfig -Name 'windterm'
+    if ($windtermCfg.enabled) {
+        $ver = [string]$windtermCfg.version
+        $urls = @()
+        $fileName = ''
+        $size = 0
+        if ($Resolved.ContainsKey('windterm')) {
+            $ver = [string]$Resolved['windterm'].Version
+            $urls = @($Resolved['windterm'].Urls)
+            $fileName = [string]$Resolved['windterm'].FileName
+            if ($Resolved['windterm'].Size) { $size = [long]$Resolved['windterm'].Size }
+        }
+        if ([string]::IsNullOrWhiteSpace($fileName)) {
+            $fileName = Format-ComponentTemplate -Template ([string]$windtermCfg.assetPattern) -Values @{ version = $ver }
+        }
+        $spec = New-ComponentSpec -Key 'windterm' -Name "WindTerm $ver（SSH 终端）" -Kind 'archive' -Comp $windtermCfg `
+            -Values @{ version = $ver } -DefaultDir "windterm-$ver" `
+            -Probe 'WindTerm.exe' -Configure 'Configure-WindTerm' -DetectKey 'windterm' -Group 'ssh'
+        $spec.Version = $ver
+        $spec.Urls = $urls
+        $spec.FileName = $fileName
+        $spec.Size = $size
+        [void]$catalog.Add($spec)
+    }
+
+    # ---------------- Apifox（API 测试） ----------------
+    $apifoxCfg = Get-ComponentConfig -Name 'apifox'
+    if ($apifoxCfg.enabled) {
+        $ver = [string]$apifoxCfg.version
+        # 官方 Windows zip 里包的是 NSIS 安装器，走 installer 引擎（zipWrapped 解壳后静默安装）
+        $spec = New-ComponentSpec -Key 'apifox' -Name 'Apifox（API 测试）' -Kind 'installer' -Comp $apifoxCfg `
+            -Values @{ version = $ver } -DefaultDir 'apifox' `
+            -Probe 'Apifox.exe' -Configure 'Configure-Apifox' -DetectKey 'apifox' -Group 'apitool'
+        $spec.Version = $ver
+        # 官方固定 latest 链接（同 dbeaver 的处理方式：latest 时直接用第一个模板，不做版本替换）
+        if ($ver -eq 'latest') {
+            $spec.Urls = @($apifoxCfg.urlTemplates[0])
+        } else {
+            $spec.Urls = Expand-TemplateList -Templates $apifoxCfg.urlTemplates -Values @{ version = $ver }
+        }
+        $spec.FileName = 'Apifox-windows-latest.zip'
+        [void]$catalog.Add($spec)
+    }
+
+    # ---------------- Tiny RDM（Redis 可视化） ----------------
+    $tinyrdmCfg = Get-ComponentConfig -Name 'tinyrdm'
+    if ($tinyrdmCfg.enabled) {
+        $ver = [string]$tinyrdmCfg.version
+        $urls = @()
+        $fileName = ''
+        $size = 0
+        if ($Resolved.ContainsKey('tinyrdm')) {
+            $ver = [string]$Resolved['tinyrdm'].Version
+            $urls = @($Resolved['tinyrdm'].Urls)
+            $fileName = [string]$Resolved['tinyrdm'].FileName
+            if ($Resolved['tinyrdm'].Size) { $size = [long]$Resolved['tinyrdm'].Size }
+        }
+        if ([string]::IsNullOrWhiteSpace($fileName)) {
+            $fileName = Format-ComponentTemplate -Template ([string]$tinyrdmCfg.assetPattern) -Values @{ version = $ver }
+        }
+        $spec = New-ComponentSpec -Key 'tinyrdm' -Name "Tiny RDM $ver（Redis 可视化）" -Kind 'archive' -Comp $tinyrdmCfg `
+            -Values @{ version = $ver } -DefaultDir "tinyrdm-$ver" `
+            -Probe 'Tiny RDM.exe' -Configure 'Configure-TinyRdm' -DetectKey 'tinyrdm' -Group 'redisgui'
+        $spec.Version = $ver
+        $spec.Urls = $urls
+        $spec.FileName = $fileName
+        $spec.Size = $size
+        [void]$catalog.Add($spec)
+    }
+
     # ---------------- 自定义 extras ----------------
     foreach ($extra in @(Get-ConfigValue -Path 'components.extras' -Default @())) {
         if (-not $extra) { continue }
@@ -1036,7 +1135,9 @@ function Get-ComponentCatalog {
         [void]$catalog.Add($spec)
     }
 
-    return $catalog.ToArray()
+    # 前导逗号：保证“0 个组件”时调用方拿到的也是空数组而不是 $null
+    # （PS 里函数零输出 = $null，后续 @($null | Where-Object {...}) 会把一个 null 项送进脚本块）
+    return , $catalog.ToArray()
 }
 
 # ---------------------------------------------------------------------------
@@ -1194,6 +1295,29 @@ function Install-InstallerComponent {
     Write-Info "$($Spec.Name) → 下载 $fileName"
     $dl = Get-RemoteFile -Urls $urls -Destination $file -ExpectedSize ([long]$Spec.Size) -Label $Spec.Name -ForceDownload:([bool]$script:Options.Force)
 
+    # 有些官方下载是「zip 壳里包安装器」（例如 Apifox：Apifox-windows-latest.zip 内是 NSIS exe），
+    # 需要先解壳拿到真正的安装器，装完把壳的解压产物清掉。
+    $setupFile = $file
+    $wrapDir = ''
+    if ([bool](Get-ObjectProperty -Object $Spec.Comp -Name 'zipWrapped' -Default $false)) {
+        $wrapDir = Join-Path $script:Ctx.Cache ('.zipwrap-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+        Write-Info "$($Spec.Name) → 解开安装器外壳 $([IO.Path]::GetFileName($file))"
+        try {
+            Expand-ArchiveTo -Archive $file -Destination $wrapDir -Force
+            $inner = [string](Get-ObjectProperty -Object $Spec.Comp -Name 'innerInstaller' -Default '')
+            if (-not [string]::IsNullOrWhiteSpace($inner)) { $setupFile = Find-FileIn -Root $wrapDir -Name $inner -MaxDepth 2 }
+            if ([string]::IsNullOrWhiteSpace($setupFile) -or -not (Test-Path -LiteralPath $setupFile)) {
+                # 未指定名字时取包里体积最大的 exe（安装器一定是包里最大的可执行文件）
+                $exes = @(Get-ChildItem -LiteralPath $wrapDir -Filter '*.exe' -Recurse -File -ErrorAction SilentlyContinue | Sort-Object Length -Descending)
+                if ($exes.Count -gt 0) { $setupFile = $exes[0].FullName } else { $setupFile = '' }
+            }
+            if ([string]::IsNullOrWhiteSpace($setupFile)) { throw '压缩包里没有找到安装器 exe' }
+        } catch {
+            Remove-PathRobust -Path $wrapDir
+            throw "解壳失败: $($_.Exception.Message)"
+        }
+    }
+
     # NSIS 参数：/D= 必须是最后一个参数，且不能加引号（所以路径含空格时只能用安装器默认目录）
     $silentList = New-Object Collections.ArrayList
     foreach ($a in @($Spec.Comp.silentArgs)) {
@@ -1213,8 +1337,9 @@ function Install-InstallerComponent {
     if ($silentArgs.Count -gt 0) { $shown = '（' + ($silentArgs -join ' ') + '）' }
     Write-Info "$($Spec.Name) → 静默安装 $shown"
 
-    $r = Invoke-Process -FilePath $file -Arguments $silentArgs -TimeoutSeconds 1800
-    if ($r.TimedOut) { throw "安装程序超时未结束（30 分钟）: $file" }
+    $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800
+    if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
+    if ($r.TimedOut) { throw "安装程序超时未结束（30 分钟）: $setupFile" }
     if ($r.ExitCode -ne 0) {
         Write-Warn "安装程序退出码 $($r.ExitCode)（继续检查安装结果）"
     }

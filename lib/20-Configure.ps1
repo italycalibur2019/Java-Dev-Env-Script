@@ -38,6 +38,30 @@ function Add-SpecShortcut {
 }
 
 # ---------------------------------------------------------------------------
+# 图标资源（仓库 assets\icons -> 安装目录 icons\）
+# ---------------------------------------------------------------------------
+function Get-IconAsset {
+    # 把仓库自带的 .ico 复制到安装目录并返回该路径；仓库里没有时返回空串（调用方退回系统图标）。
+    # 之所以复制而不是直接引用仓库路径：安装目录要能脱离源码目录独立存在（例如拷到别的机器）。
+    param([Parameter(Mandatory = $true)][string]$Name)
+    $src = Join-Path $script:Ctx.ScriptRoot (Join-Path 'assets\icons' $Name)
+    if (-not (Test-Path -LiteralPath $src)) {
+        Write-Debug2 "图标资源缺失: $src（将退回系统图标）"
+        return ''
+    }
+    $iconDir = Join-Path $script:Ctx.Root 'icons'
+    $dst = Join-Path $iconDir $Name
+    if ($script:Options -and $script:Options.DryRun) { return $dst }
+    try {
+        if (-not (Test-Path -LiteralPath $iconDir)) { New-Item -ItemType Directory -Path $iconDir -Force | Out-Null }
+        Copy-Item -LiteralPath $src -Destination $dst -Force
+    } catch {
+        Write-Debug2 "复制图标失败: $($_.Exception.Message)"
+    }
+    return $dst
+}
+
+# ---------------------------------------------------------------------------
 # Maven
 # ---------------------------------------------------------------------------
 function New-MavenSettingsXml {
@@ -419,6 +443,16 @@ function Configure-Postgres {
         "`"$pgCtl`" -D `"%PGDATA%`" status",
         'pause'
     )
+    # 开机自启专用：静默启动（无 pause、无交互提示、输出丢弃），登录时由「启动」文件夹调用
+    Write-TextFileNoBom -Path (Join-Path $binOut 'pg-autostart.cmd') -Lines @(
+        '@echo off',
+        'setlocal',
+        "set `"PGDATA=$dataDir`"",
+        "`"$pgCtl`" -D `"%PGDATA%`" -l `"$logFile`" -w -t 60 start >nul 2>&1",
+        'if errorlevel 1 exit /b 1',
+        "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" -NoProfile -ExecutionPolicy Bypass -File `"$($script:Ctx.Bin)\pg-ensure-db.ps1`" >nul 2>&1",
+        'exit /b 0'
+    )
     Write-TextFileNoBom -Path (Join-Path $binOut 'psql.cmd') -Lines @(
         '@echo off',
         'setlocal',
@@ -452,10 +486,14 @@ function Configure-Postgres {
         '}'
     )
 
+    $pgIconStart = Get-IconAsset -Name 'pgsql-start.ico'
+    if ([string]::IsNullOrWhiteSpace($pgIconStart)) { $pgIconStart = [Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,137') }
+    $pgIconStop = Get-IconAsset -Name 'pgsql-stop.ico'
+    if ([string]::IsNullOrWhiteSpace($pgIconStop)) { $pgIconStop = [Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,131') }
     Add-SpecShortcut -Spec $Spec -Item 'pg' -Name 'PostgreSQL-启动' -Target (Join-Path $binOut 'pg-start.cmd') `
-        -Icon ([Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,137'))
+        -Icon $pgIconStart
     Add-SpecShortcut -Spec $Spec -Item 'pg' -Name 'PostgreSQL-停止' -Target (Join-Path $binOut 'pg-stop.cmd') `
-        -Icon ([Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,131'))
+        -Icon $pgIconStop
     Add-SpecShortcut -Spec $Spec -Item 'pg' -Name 'PostgreSQL 命令行(psql)' -Target (Join-Path $binOut 'psql.cmd') `
         -Icon $psql
 
@@ -641,11 +679,23 @@ function Configure-Redis {
         'setlocal',
         "`"$cli`" -h 127.0.0.1 -p $port $authArg %*"
     )
+    # 开机自启专用：静默拉起（Redis 的控制台窗口保持最小化，关掉它 = 停掉 Redis）
+    Write-TextFileNoBom -Path (Join-Path $binOut 'redis-autostart.cmd') -Lines @(
+        '@echo off',
+        'setlocal',
+        "cd /d `"$($Spec.Target)`"",
+        "start `"Redis $port`" /min `"$exe`" `"redis-dev.conf`"",
+        'exit /b 0'
+    )
 
+    $redisIconStart = Get-IconAsset -Name 'redis-start.ico'
+    if ([string]::IsNullOrWhiteSpace($redisIconStart)) { $redisIconStart = [Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,137') }
+    $redisIconStop = Get-IconAsset -Name 'redis-stop.ico'
+    if ([string]::IsNullOrWhiteSpace($redisIconStop)) { $redisIconStop = [Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,131') }
     Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis-启动' -Target (Join-Path $binOut 'redis-start.cmd') `
-        -Icon ([Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,137'))
+        -Icon $redisIconStart
     Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis-停止' -Target (Join-Path $binOut 'redis-stop.cmd') `
-        -Icon ([Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,131'))
+        -Icon $redisIconStop
     Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis 命令行(redis-cli)' -Target (Join-Path $binOut 'redis-cli.cmd') `
         -Icon $cli
 
@@ -691,6 +741,29 @@ function Configure-HeidiSql {
         }
     }
     Add-SpecShortcut -Spec $Spec -Item 'heidisql' -Name 'HeidiSQL' -Target $Spec.ProbePath -Icon $Spec.ProbePath
+}
+
+# ---------------------------------------------------------------------------
+# WindTerm / Apifox / Tiny RDM
+# ---------------------------------------------------------------------------
+function Configure-WindTerm {
+    # WindTerm 便携版：首次启动会弹一次「选择 profiles 目录」，选默认（用户主目录）即可；
+    # 会话数据保存在所选目录的 .wind 子目录里，升级替换程序目录不影响会话。
+    param([Parameter(Mandatory = $true)][hashtable]$Spec)
+    if ([string]::IsNullOrWhiteSpace($Spec.ProbePath) -or -not (Test-Path -LiteralPath $Spec.ProbePath)) { return }
+    Add-SpecShortcut -Spec $Spec -Item 'windterm' -Name 'WindTerm' -Target $Spec.ProbePath -Icon $Spec.ProbePath
+}
+
+function Configure-Apifox {
+    param([Parameter(Mandatory = $true)][hashtable]$Spec)
+    if ([string]::IsNullOrWhiteSpace($Spec.ProbePath) -or -not (Test-Path -LiteralPath $Spec.ProbePath)) { return }
+    Add-SpecShortcut -Spec $Spec -Item 'apifox' -Name 'Apifox' -Target $Spec.ProbePath -Icon $Spec.ProbePath
+}
+
+function Configure-TinyRdm {
+    param([Parameter(Mandatory = $true)][hashtable]$Spec)
+    if ([string]::IsNullOrWhiteSpace($Spec.ProbePath) -or -not (Test-Path -LiteralPath $Spec.ProbePath)) { return }
+    Add-SpecShortcut -Spec $Spec -Item 'tinyrdm' -Name 'Tiny RDM' -Target $Spec.ProbePath -Icon $Spec.ProbePath
 }
 
 # ---------------------------------------------------------------------------
@@ -938,24 +1011,75 @@ function New-DbInfoFile {
 }
 
 function Register-Autostart {
+    # 登录自启（「启动」文件夹方案，全程不需要管理员权限）：
+    #   - PostgreSQL / Redis：指向 bin 下专用的静默启动脚本（pg-autostart.cmd / redis-autostart.cmd）
+    #   - DSH 桌面端：直接指向 DeepSeek Harness.exe（GUI 程序，没有控制台窗口问题）
+    # 语义：components.<key>.autostart=true 且目标存在 -> 创建/刷新；autostart=false -> 清掉旧条目。
+    # 因此「改配置后重跑 install.cmd / autostart」即可切换自启开关。
     param([array]$Catalog)
-    $items = New-Object Collections.ArrayList
-    foreach ($spec in @($Catalog)) {
-        $cfg = $spec.Comp
-        if (-not $cfg) { continue }
-        if (-not [bool](Get-ObjectProperty -Object $cfg -Name 'autostart' -Default $false)) { continue }
-        if ($spec.Key -eq 'postgres') { [void]$items.Add(@{ Name = 'JavaDevEnv-PostgreSQL'; Script = (Join-Path $script:Ctx.Bin 'pg-start.cmd') }) }
-        if ($spec.Key -eq 'redis') { [void]$items.Add(@{ Name = 'JavaDevEnv-Redis'; Script = (Join-Path $script:Ctx.Bin 'redis-start.cmd') }) }
-    }
-    if ($items.Count -eq 0) { return 0 }
     $startup = [Environment]::GetFolderPath('Startup')
+    if ([string]::IsNullOrWhiteSpace($startup)) {
+        Write-Warn '无法定位「启动」文件夹，跳过开机自启配置'
+        return 0
+    }
+    $known = @(
+        @{ Key = 'postgres'; Name = 'JavaDevEnv-PostgreSQL'; Label = 'PostgreSQL'; IconName = 'pgsql-start.ico' },
+        @{ Key = 'redis'; Name = 'JavaDevEnv-Redis'; Label = 'Redis'; IconName = 'redis-start.ico' },
+        @{ Key = 'dsh'; Name = 'JavaDevEnv-DSH'; Label = 'DSH 桌面端'; IconName = '' }
+    )
     $count = 0
-    foreach ($item in $items) {
-        if (-not (Test-Path -LiteralPath $item.Script)) { continue }
-        if (New-Shortcut -Path (Join-Path $startup ($item.Name + '.lnk')) -TargetPath $item.Script -WorkingDirectory $script:Ctx.Bin -WindowStyle 7) {
+    foreach ($k in @($known)) {
+        $spec = @($Catalog | Where-Object { $_.Key -eq $k.Key })[0]
+        $enabled = $false
+        if ($spec -and $spec.Comp) { $enabled = [bool](Get-ObjectProperty -Object $spec.Comp -Name 'autostart' -Default $false) }
+        $lnk = Join-Path $startup ($k.Name + '.lnk')
+        if (-not $enabled) {
+            if (Test-Path -LiteralPath $lnk) {
+                if (Remove-Shortcut -Path $lnk) {
+                    Write-Info "已移除开机自启: $($k.Label)（components.$($k.Key).autostart=false）"
+                }
+            }
+            continue
+        }
+        $target = ''
+        $winStyle = 7
+        switch ($k.Key) {
+            'postgres' { $target = Join-Path $script:Ctx.Bin 'pg-autostart.cmd' }
+            'redis' { $target = Join-Path $script:Ctx.Bin 'redis-autostart.cmd' }
+            'dsh' {
+                $target = [string]$spec.ProbePath
+                $winStyle = 1   # GUI 程序，正常窗口即可
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($target) -or -not (Test-Path -LiteralPath $target)) {
+            Write-Warn "开机自启跳过（$($k.Label)）：启动目标不存在（$target）；请先完成安装再重跑"
+            continue
+        }
+        $icon = ''
+        if (-not [string]::IsNullOrWhiteSpace($k.IconName)) { $icon = Get-IconAsset -Name $k.IconName }
+        if ([string]::IsNullOrWhiteSpace($icon)) { $icon = $target }
+        if (New-Shortcut -Path $lnk -TargetPath $target -WorkingDirectory $script:Ctx.Bin `
+                -IconLocation $icon -Description "JavaDevEnv $($k.Label) 登录自启" -WindowStyle $winStyle) {
             $count++
         }
     }
-    if ($count -gt 0) { Write-Ok "已设置 $count 个开机自启项（登录后自动启动数据库）" }
+    if ($count -gt 0) {
+        Write-Ok "已设置 $count 个开机自启项（登录后自动拉起；可在 任务管理器 > 启动应用 里禁用）"
+    }
     return $count
+}
+
+function Unregister-Autostart {
+    # 卸载时清理「启动」文件夹里由本工具创建的自启项（不看配置开关，一律移除）
+    param([string[]]$Names = @('JavaDevEnv-PostgreSQL', 'JavaDevEnv-Redis', 'JavaDevEnv-DSH'))
+    $startup = [Environment]::GetFolderPath('Startup')
+    if ([string]::IsNullOrWhiteSpace($startup)) { return 0 }
+    $removed = 0
+    foreach ($name in @($Names)) {
+        $lnk = Join-Path $startup ($name + '.lnk')
+        if (Test-Path -LiteralPath $lnk) {
+            if (Remove-Shortcut -Path $lnk) { $removed++ }
+        }
+    }
+    return $removed
 }

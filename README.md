@@ -10,9 +10,11 @@
 [![verify](https://github.com/italycalibur2019/Java-Dev-Env-Script/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/italycalibur2019/Java-Dev-Env-Script/actions/workflows/verify.yml)
 
 一套面向 Windows 的 PowerShell 脚本，用于在新机器上**快速搭好 Java 开发环境**：
-JDK、Maven、Git、Node.js、DSH（DeepSeek Harness 桌面端）、IntelliJ IDEA、PostgreSQL、Redis、DBeaver、HeidiSQL
+JDK、Maven、Git、Node.js、DSH（DeepSeek Harness 桌面端）、IntelliJ IDEA、PostgreSQL、Redis、DBeaver、HeidiSQL，
+以及 SSH 终端 **WindTerm**、API 测试 **Apifox**、Redis 可视化 **Tiny RDM**
 全部**绿色免安装**（解压即用；DSH 桌面端是官方安装包，会静默装到安装目录内），
 自动写入用户级环境变量、生成桌面快捷方式、初始化数据库，并把连接信息整理成可直接粘贴到 Spring Boot 配置里的文件。
+PostgreSQL / Redis 默认随登录自动启动（无需管理员），桌面启停快捷方式使用专门合成的「logo + 启停角标」图标。
 
 - 适用系统：Windows 10 / 11 / Server 2019+（已在 Windows 11 + Windows PowerShell 5.1 实测）
 - 无需管理员权限（默认流程全部写入当前用户，不碰系统目录与 HKLM）
@@ -81,7 +83,7 @@ DSH 桌面端不用命令行验证：双击桌面的 **DSH 桌面端** 图标即
 | `install.cmd` | 一键安装（默认按 `standard` 组合全自动执行） |
 | `menu.cmd` | 交互式向导，逐个选择要安装的组件 |
 | `status.cmd` | 查看当前环境状态（装了什么、在哪、环境变量是否就绪） |
-| `doctor.cmd` | 环境自检（版本可执行、数据库连通性、端口占用、长路径等） |
+| `doctor.cmd` | 环境自检（版本可执行、数据库连通性、端口占用、开机自启、长路径等） |
 | `uninstall.cmd` | 卸载 / 回滚（默认保留数据库数据目录） |
 
 ---
@@ -101,6 +103,7 @@ Java-Dev-Env-Script\
 │   ├─ default.json                全部默认配置（版本、镜像、端口、密码、开关）
 │   └─ user.example.json           定制示例：复制为 user.json 即生效
 ├─ tools\Verify-Repo.ps1           提交前自检（BOM / 编码 / 语法 / JSON / 敏感信息）
+├─ assets\icons\                   数据库启停快捷方式图标（合成成品 + src 素材与生成脚本）
 ├─ docs\images\                    README 用的截图（需要哪些图见该目录下的 README.md）
 ├─ .github\workflows\verify.yml    CI：在 PowerShell 5.1 与 7 下各跑一遍自检
 ├─ .github\ISSUE_TEMPLATE\         问题反馈 / 功能建议模板（会要求你贴 doctor 输出）
@@ -116,7 +119,9 @@ Java-Dev-Env-Script\
 D:\JavaDevEnv\
 ├─ jdk-21\  apache-maven-3.9.9\  git-2.46.0\  node-20.18.0\  node-global\
 ├─ idea-2025.3\  dbeaver\  heidisql-12.8\  pgsql-17.2\  redis-8.10.2\  dsh-desktop\
+├─ windterm-2.7.0\  apifox\  tinyrdm-1.2.7\          SSH 终端 / API 测试 / Redis 可视化
 ├─ bin\         pg-start.cmd / pg-stop.cmd / psql.cmd / redis-start.cmd / devshell.cmd / dsh-cli.cmd ...
+├─ icons\       启停快捷方式用的 .ico（安装时从仓库 assets\icons 复制）
 ├─ data\        postgres\  redis\  dbeaver-workspace\
 ├─ cache\       下载的压缩包（可删，下次重装复用）
 ├─ config\      生成的 maven-settings.xml / npmrc 参考副本
@@ -144,18 +149,19 @@ install.cmd -Force                           # 强制重新下载安装（忽略
 install.cmd -Offline                         # 只用本地缓存，不联网
 install.cmd -NoEnv                           # 不改环境变量（仅解压+配置）
 install.cmd -NoShortcuts                     # 不建快捷方式
-install.cmd -Autostart                       # 让数据库随登录自动启动
+install.cmd -Autostart                       # 本次安装把 PostgreSQL/Redis/DSH 的自启全部打开
 install.cmd -LogLevel Debug                  # 详细日志
 
 # 运维
 status.cmd
 doctor.cmd
+install.cmd -Action autostart                # 只应用自启配置（改完 user.json 后用，无需重装）
 uninstall.cmd                                # 卸载（保留 data 数据）
 uninstall.cmd -BackupFile <env-backup.json>  # 同时回滚环境变量
 install.cmd -Action help                     # 查看完整帮助
 ```
 
-组件 key：`jdk` `maven` `ide` `git` `node` `dsh` `dsh-cli` `postgres` `redis` `dbeaver` `heidisql`
+组件 key：`jdk` `maven` `ide` `git` `node` `dsh` `dsh-cli` `postgres` `redis` `dbeaver` `heidisql` `windterm` `apifox` `tinyrdm`
 
 > `-Components` 也接受**分组名**：写 `jdk` 会选中所有已配置的 JDK 版本（如 `jdk21`、`jdk17`），
 > 写 `database` 会选中 `postgres` + `redis`。组件间依赖会自动补齐（例如 `dsh-cli` 会带上 `node`）。
@@ -177,6 +183,9 @@ install.cmd -Action help                     # 查看完整帮助
 | Redis | 8.10.2（redis-windows，含 Service 支持） | zip 解压 + 自带 conf，脚本启停 |
 | DBeaver CE | 官方 zip（latest 直链） | zip 解压，工作区指向 `data\dbeaver-workspace` |
 | HeidiSQL | 12.8 便携版（**默认关闭**） | zip 解压 + 生成 `portable_settings.txt` |
+| WindTerm | 2.7.0（GitHub Release 实时解析最新） | 便携 zip 解压即用（SSH/SFTP 终端；首次启动选一次 profiles 目录） |
+| Apifox | 官方固定 latest 链接（`Apifox-windows-latest.zip`） | 官方 zip 里是 NSIS 安装器：解壳后 `/S /currentuser /D=` 静默装进安装目录 |
+| Tiny RDM | 1.2.7（GitHub Release 实时解析最新） | 便携 zip 解压即用（轻量 Redis 可视化） |
 | 自定义 | `config` 里的 `components.extras` | 任意 zip + 指定 exe/快捷方式/PATH |
 
 > **数据库管理工具二选一**：`dbeaver`（默认，跨库、功能全）与 `heidisql`（约 28MB、原生启动快）定位相同，
@@ -219,8 +228,10 @@ install.cmd -Action help                     # 查看完整帮助
   ```bat
   <root>\bin\redis-start.cmd   <root>\bin\redis-stop.cmd   <root>\bin\redis-cli.cmd
   ```
-- 想让数据库**随登录自动启动**：配置里把 `autostart` 设为 `true`（或安装时加 `-Autostart`），
-  脚本会在「启动」文件夹放一个最小化快捷方式，无需管理员、无需注册 Windows 服务。
+- **开机自启（默认已开启）**：`postgres` / `redis` 默认 `autostart: true`，登录后自动拉起；
+  `dsh`（DSH 桌面端）默认不跟随登录，想开机就启动它就在配置里把 `components.dsh.autostart` 设为 `true`。
+  全程走「启动」文件夹，**无需管理员、无需注册 Windows 服务**；把开关改成 `false` 后重跑
+  `install.cmd -Action autostart` 即可移除对应自启项，卸载时也会自动清理。
 - **机器上已经有 PostgreSQL / Redis 怎么办？**
   脚本会扫描各磁盘的常见目录（`X:\Database`、`X:\Dev`、`X:\Java`、`X:\Software`、`X:\Tools` …）和注册表，
   找到已安装的实例后，`existingPolicy=prefer`（默认）下会**直接复用**：
@@ -245,6 +256,15 @@ install.cmd -Action help                     # 查看完整帮助
   `redis-server.exe --service-install redis-dev.conf --service-name RedisDev`（需管理员）；
   PostgreSQL 建议用 EDB 官方安装器注册服务，本脚本专注于免管理员的绿色实例。
 
+### 启停快捷方式图标
+
+桌面上的「PostgreSQL-启动 / 停止」「Redis-启动 / 停止」不用系统通用图标，而是专门合成的样式：
+以 PostgreSQL 大象、Redis 方块 logo 为主体，右下角叠加 Windows 风格的启动（绿色播放）/ 停止（红色方块）角标，
+一眼可分；同一个 .ico 内置 16–256 全尺寸，任务栏和资源管理器里都清晰。
+图标成品在仓库 `assets\icons\`（素材与生成脚本在 `assets\icons\src\`）：
+
+![启停快捷方式图标](docs/images/icon-preview.png)
+
 ---
 
 ## 五、定制化
@@ -263,10 +283,13 @@ install.cmd -Action help                     # 查看完整帮助
     "postgres": { "port": 5433, "password": "dev123456", "databases": ["devdb", "testdb"], "autostart": true,
                   "localeProvider": "icu", "icuLocale": "zh-CN" },
     "redis":    { "port": 6380, "password": "redis123", "maxmemory": "1gb" },
-    "dsh":      { "enabled": true },
-    "dsh-cli":  { "enabled": false, "registry": "https://registry.npmmirror.com" }
+    "dsh":      { "enabled": true, "autostart": false },
+    "dsh-cli":  { "enabled": false, "registry": "https://registry.npmmirror.com" },
+    "windterm": { "enabled": true },
+    "apifox":   { "enabled": true },
+    "tinyrdm":  { "enabled": true }
   },
-  "shortcuts": { "items": ["ide", "dbeaver", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo"] }
+  "shortcuts": { "items": ["ide", "dbeaver", "pg", "redis", "devshell", "root", "dsh", "dsh-cli", "dbinfo", "windterm", "apifox", "tinyrdm"] }
 }
 ```
 
@@ -283,7 +306,7 @@ install.cmd -Action help                     # 查看完整帮助
 | `env.setUserEnvVars` / `updateUserPath` | 是否写用户环境变量 / 追加 PATH |
 | `env.forceJavaHome` | 机器上已有 JDK 时，是否仍把 `JAVA_HOME` 指向本工具安装的 JDK |
 | `env.mavenOpts` | 默认 `-Dfile.encoding=UTF-8`（中文 Windows 编译乱码的常见解药） |
-| `shortcuts.items` | 生成哪些快捷方式：`ide` `dbeaver` `heidisql` `pg` `redis` `devshell` `root` `dsh` `dsh-cli` `dbinfo` |
+| `shortcuts.items` | 生成哪些快捷方式：`ide` `dbeaver` `heidisql` `pg` `redis` `devshell` `root` `dsh` `dsh-cli` `dbinfo` `windterm` `apifox` `tinyrdm` |
 | `components.<x>.enabled` | 是否安装该组件 |
 | `uninstall.*` | 卸载时是否删文件/环境变量/快捷方式，是否保留 `data` |
 

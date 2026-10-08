@@ -12,7 +12,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('install', 'status', 'doctor', 'uninstall', 'plan', 'restore', 'help')]
+    [ValidateSet('install', 'status', 'doctor', 'uninstall', 'plan', 'restore', 'autostart', 'help')]
     [string]$Action = 'install',
 
     [string[]]$Components = @(),
@@ -75,13 +75,14 @@ function Show-Help {
     Write-Host '    install.cmd -Root E:\JavaDevEnv  指定安装目录'
     Write-Host '    install.cmd -DryRun              只显示计划，不做任何改动'
     Write-Host '    install.cmd -Force               强制重新下载安装'
+    Write-Host '    install.cmd -Action autostart    应用配置里的开机自启设置（改完 user.json 后用）'
     Write-Host '    status.cmd                       查看当前环境状态'
-    Write-Host '    doctor.cmd                       环境自检（版本、连通性、端口）'
+    Write-Host '    doctor.cmd                       环境自检（版本、连通性、端口、自启）'
     Write-Host '    uninstall.cmd                    卸载（可保留 data 数据目录）'
     Write-Host ''
     Write-Host '  全部参数:' -ForegroundColor White
-    Write-Host '    -Action    install|status|doctor|uninstall|plan|restore|help'
-    Write-Host '    -Components <逗号分隔>   jdk,maven,ide,git,node,dsh,dsh-cli,postgres,redis,dbeaver,heidisql'
+    Write-Host '    -Action    install|status|doctor|uninstall|plan|restore|autostart|help'
+    Write-Host '    -Components <逗号分隔>   jdk,maven,ide,git,node,dsh,dsh-cli,postgres,redis,dbeaver,heidisql,windterm,apifox,tinyrdm'
     Write-Host '    -Profile <名称>          minimal|standard|full'
     Write-Host '    -ConfigFile <文件>       指定配置文件（默认 config\default.json + config\user.json）'
     Write-Host '    -Root <目录>             安装根目录'
@@ -121,7 +122,7 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($Root)) { $cfg['installRoot'] = $Root }
     if (-not [string]::IsNullOrWhiteSpace($Profile)) { $cfg['profile'] = $Profile }
     if ($Autostart) {
-        foreach ($name in @('postgres', 'redis')) {
+        foreach ($name in @('postgres', 'redis', 'dsh')) {
             if ($cfg.components.ContainsKey($name) -and ($cfg.components[$name] -is [hashtable])) {
                 $cfg.components[$name]['autostart'] = $true
             }
@@ -203,6 +204,7 @@ try {
         'status' { Invoke-StatusAction -Config $cfg -Resolved $resolved }
         'doctor' { Invoke-DoctorAction -Config $cfg -Resolved $resolved }
         'uninstall' { Invoke-UninstallAction -Config $cfg -Resolved $resolved -BackupFile $BackupFile }
+        'autostart' { Invoke-AutostartAction -Config $cfg -Resolved $resolved }
         'restore' {
             if ([string]::IsNullOrWhiteSpace($BackupFile)) { throw '请用 -BackupFile 指定要恢复的环境变量备份文件' }
             [void](Restore-UserEnvironment -File $BackupFile)
