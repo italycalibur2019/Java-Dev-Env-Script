@@ -256,12 +256,15 @@
     },
 
     "apifox": {
-      "_说明": "API 设计/调试/测试一体化工具。官方 Windows zip 里是 NSIS 安装器（zipWrapped=true），脚本会解壳后用 /S /currentuser /D= 静默装到安装目录；缓存命中旧包时可用 -Force 重新下载。",
+      "_说明": "API 设计/调试/测试一体化工具。官方 Windows zip 里是 NSIS 安装器（zipWrapped=true），脚本会解壳后用 /S /currentuser /D= 静默装到安装目录；32 位系统自动改用 urlTemplates32 里的官方 win32 包；缓存命中旧包时可用 -Force 重新下载。若安装器启动报错，多半是杀毒软件拦截，脚本会给出具体诊断。",
       "enabled": true,
       "version": "latest",
       "dirTemplate": "apifox",
       "urlTemplates": [
         "https://file-assets.apifox.com/download/Apifox-windows-latest.zip"
+      ],
+      "urlTemplates32": [
+        "https://file-assets.apifox.com/download/Apifox-win32-latest.zip"
       ],
       "zipWrapped": true,
       "innerInstaller": "",

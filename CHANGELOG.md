@@ -34,6 +34,14 @@
 
 - GitHub Release 解析逻辑从 redis 专属重构为通用形态（`githubRepo` + `assetPattern` + `tagPrefix`），新组件零成本接入
 
+### 修复 · 安装器
+
+- **Apifox 等安装器启动前增加 PE 预检与精确诊断**：解壳出的安装器先做文件头校验（架构 / 是否完整），
+  启动失败时不再抛出难懂的 `not a valid application for this OS platform`，
+  而是给出可行动的中文归因——杀毒软件解压后拦截清空（实测 0 字节/PE 残缺均报 Win32 193）、
+  精简系统缺 32 位兼容层（SysWOW64）等，附隔离区核查与白名单建议
+- **32 位 Windows 自动改用官方 win32 安装包**（`Apifox-win32-latest.zip`，`urlTemplates32` 可覆盖）
+
 ## [1.0.0] - 2026-09-30
 
 首个公开版本。

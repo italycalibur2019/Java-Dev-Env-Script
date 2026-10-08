@@ -1062,6 +1062,11 @@ function Get-ComponentCatalog {
         } else {
             $spec.Urls = Expand-TemplateList -Templates $apifoxCfg.urlTemplates -Values @{ version = $ver }
         }
+        # 32 位系统：官方 64 位包里的安装器跑不起来，自动改用官方 win32 专用包
+        if (-not [Environment]::Is64BitOperatingSystem) {
+            $urls32 = @(Get-ObjectProperty -Object $apifoxCfg -Name 'urlTemplates32' -Default @())
+            if ($urls32.Count -gt 0) { $spec.Urls = $urls32 }
+        }
         $spec.FileName = 'Apifox-windows-latest.zip'
         [void]$catalog.Add($spec)
     }
@@ -1318,6 +1323,23 @@ function Install-InstallerComponent {
         }
     }
 
+    # 启动前预检安装器镜像：把“杀软清空/精简系统缺 32 位兼容层”这类问题在启动前就报清楚，
+    # 避免直接抛出难懂的 “not a valid application for this OS platform”（Win32 193）。
+    $pe = Test-PeImage -Path $setupFile
+    if (-not $pe.Valid) {
+        $msg = New-Object Collections.ArrayList
+        [void]$msg.Add("安装器不可运行: $setupFile")
+        [void]$msg.Add("预检结果: $($pe.Reason)")
+        [void]$msg.Add('常见原因是杀毒软件实时防护在解压后拦截/清空了安装器：请查看查杀记录/隔离区并恢复或添加信任，把缓存目录加入白名单后重跑（怀疑缓存包损坏可加 -Force 重新下载）。')
+        throw (($msg) -join [Environment]::NewLine)
+    }
+    Write-Info ("安装器: {0}（{1}，{2}）" -f (Split-Path $setupFile -Leaf),
+        (Format-FileSize -Bytes (Get-Item -LiteralPath $setupFile).Length), $pe.MachineText)
+    if ([Environment]::Is64BitOperatingSystem -and $pe.Machine -eq 0x014C -and
+        -not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'SysWOW64\kernel32.dll'))) {
+        throw '该安装器是 32 位程序，而当前系统缺少 32 位兼容层（SysWOW64）——精简版/魔改系统常见，请更换完整版系统镜像后重试。'
+    }
+
     # NSIS 参数：/D= 必须是最后一个参数，且不能加引号（所以路径含空格时只能用安装器默认目录）
     $silentList = New-Object Collections.ArrayList
     foreach ($a in @($Spec.Comp.silentArgs)) {
@@ -1337,7 +1359,13 @@ function Install-InstallerComponent {
     if ($silentArgs.Count -gt 0) { $shown = '（' + ($silentArgs -join ' ') + '）' }
     Write-Info "$($Spec.Name) → 静默安装 $shown"
 
-    $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800
+    $r = $null
+    try {
+        $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800
+    } catch {
+        if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
+        throw (Format-InstallerStartError -ErrorRecord $_ -SetupFile $setupFile -PeBefore $pe)
+    }
     if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
     if ($r.TimedOut) { throw "安装程序超时未结束（30 分钟）: $setupFile" }
     if ($r.ExitCode -ne 0) {

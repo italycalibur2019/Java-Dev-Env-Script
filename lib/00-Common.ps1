@@ -829,6 +829,90 @@ function Find-FileIn {
     return $null
 }
 
+function Test-PeImage {
+    # 只读文件头，判断“是不是一个结构完整的 Windows 可执行镜像”，不执行文件本身。
+    # 用途：安装器启动前的预检，以及启动失败（Win32 错误 193/216）时的归因诊断。
+    # 实测签名：0 字节/PE 结构残缺 → 193；有 MZ 但缺 PE 头 → 216。
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $result = @{ Valid = $false; Machine = 0; MachineText = ''; Reason = '' }
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { $result.Reason = '文件不存在'; return $result }
+        $len = (Get-Item -LiteralPath $Path -Force).Length
+        if ($len -lt 0x40) { $result.Reason = "文件只有 $len 字节（很可能已被安全软件清空/隔离）"; return $result }
+        $fs = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+        try {
+            $br = New-Object IO.BinaryReader($fs)
+            $mz = $br.ReadBytes(2)
+            if ($mz.Length -lt 2 -or $mz[0] -ne 0x4D -or $mz[1] -ne 0x5A) {
+                $result.Reason = '缺少 MZ 头（不是 Windows 可执行文件，内容可能已被替换）'
+                return $result
+            }
+            $fs.Position = 0x3C
+            $peOff = $br.ReadInt32()
+            if ($peOff -le 0 -or $peOff -ge ($len - 24)) { $result.Reason = 'PE 头偏移越界（镜像结构损坏）'; return $result }
+            $fs.Position = $peOff
+            $sig = $br.ReadBytes(4)
+            if ($sig.Length -lt 4 -or $sig[0] -ne 0x50 -or $sig[1] -ne 0x45 -or $sig[2] -ne 0 -or $sig[3] -ne 0) {
+                $result.Reason = 'PE 签名缺失（镜像结构损坏）'
+                return $result
+            }
+            $machine = $br.ReadUInt16()
+            $result.Machine = $machine
+            $result.MachineText = switch ($machine) {
+                0x014C { 'x86 32 位' }
+                0x8664 { 'x64 64 位' }
+                0xAA64 { 'ARM64' }
+                default { ('0x{0:X4}' -f $machine) }
+            }
+            $result.Valid = $true
+            return $result
+        } finally { $fs.Dispose() }
+    } catch {
+        $result.Reason = "读取失败: $($_.Exception.Message)"
+        return $result
+    }
+}
+
+function Format-InstallerStartError {
+    # 安装器 Process.Start 抛异常时的归因报错：结合启动前后的 PE 校验结果与 Win32 错误码，
+    # 把难懂的 “not a valid application for this OS platform” 翻译成能直接行动的中文提示。
+    param(
+        [Parameter(Mandatory = $true)]$ErrorRecord,
+        [Parameter(Mandatory = $true)][string]$SetupFile,
+        [hashtable]$PeBefore = $null
+    )
+    $lines = New-Object Collections.ArrayList
+    $code = 0
+    if ($ErrorRecord.Exception -and $ErrorRecord.Exception.PSObject.Properties['NativeErrorCode']) {
+        $code = [int]$ErrorRecord.Exception.NativeErrorCode
+    } elseif ($ErrorRecord.Exception.InnerException -and $ErrorRecord.Exception.InnerException.PSObject.Properties['NativeErrorCode']) {
+        $code = [int]$ErrorRecord.Exception.InnerException.NativeErrorCode
+    }
+    [void]$lines.Add("安装器无法启动（Win32 错误 $code）: $SetupFile")
+    $pe = Test-PeImage -Path $SetupFile
+    if ($pe.Valid) {
+        [void]$lines.Add("当前文件完好（$($pe.MachineText)）。")
+        if ($null -ne $PeBefore -and -not $PeBefore.Valid) {
+            [void]$lines.Add('注意：启动前预检就已经失败，文件在解压后、启动前即被拦截或替换。')
+        }
+        if ($code -eq 193 -and [Environment]::Is64BitOperatingSystem -and
+            -not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'SysWOW64\kernel32.dll'))) {
+            [void]$lines.Add('系统缺少 32 位兼容层（SysWOW64），无法运行 32 位安装器——精简版/魔改系统常见，请更换完整版系统镜像后重试。')
+        } elseif ($code -eq 193) {
+            [void]$lines.Add('镜像结构完整却被系统拒绝执行，通常是安全软件策略（如 Smart App Control/组策略/杀软主动防御）拦截，请查看安全软件的拦截记录。')
+        } else {
+            [void]$lines.Add('请查看完整报错信息定位原因。')
+        }
+    } else {
+        [void]$lines.Add("当前文件异常: $($pe.Reason)。")
+        if ($null -ne $PeBefore -and $PeBefore.Valid) {
+            [void]$lines.Add('启动前预检还是完好的——文件在启动前一刻被清空/损坏，几乎可以确定是杀毒软件实时防护拦截了安装器。')
+        }
+        [void]$lines.Add('处理建议：查看杀毒软件的查杀/隔离记录并恢复或添加信任；把脚本缓存目录加入白名单；重跑安装（怀疑缓存包损坏可加 -Force 重新下载）。')
+    }
+    return (($lines) -join [Environment]::NewLine)
+}
+
 # ---------------------------------------------------------------------------
 # 托管配置块
 # ---------------------------------------------------------------------------
