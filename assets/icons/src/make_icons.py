@@ -21,8 +21,8 @@ WHITE = (255, 255, 255, 255)
 RING = (255, 255, 255, 255)
 
 BADGE_C = (386, 386)   # badge center in 512-space
-BADGE_RO = 112         # outer (white ring) radius
-BADGE_RI = 94          # inner colored disc radius
+BADGE_RO = 108         # outer (white ring) radius
+BADGE_RI = 90          # inner colored disc radius
 
 
 def fit_logo(img, box):
@@ -48,15 +48,15 @@ def fit_logo(img, box):
 def glyph_play(draw, cx, cy):
     """Right-pointing triangle, optically centered. 坐标按 512 设计空间给出，此处乘 K 换算到超采样画布。"""
     k = K
-    pts = [(cx - 42 * k, cy - 72 * k), (cx - 42 * k, cy + 72 * k), (cx + 76 * k, cy)]
+    pts = [(cx - 40 * k, cy - 58 * k), (cx - 40 * k, cy + 58 * k), (cx + 56 * k, cy)]
     draw.polygon(pts, fill=WHITE)
 
 
 def glyph_stop(draw, cx, cy):
     k = K
-    side = 138 * k
-    r = 30 * k
-    x0, y0 = cx - side // 2 + 4 * k, cy - side // 2  # +4 optical shift left
+    side = 112 * k
+    r = 24 * k
+    x0, y0 = cx - side // 2 + 3 * k, cy - side // 2  # +3 optical shift left
     draw.rounded_rectangle([x0, y0, x0 + side, y0 + side], radius=r, fill=WHITE)
 
 
@@ -115,8 +115,8 @@ for key, img in results.items():
     bx, by = BADGE_C
     def sample(x, y):
         return px[x, y]
-    disc = sample(bx - 90, by)     # inside colored disc, left edge (glyphs never reach there)
-    ring = sample(bx - 103, by)    # on white ring (94..112)
+    disc = sample(bx - 80, by)     # inside colored disc, left edge (glyphs never reach there)
+    ring = sample(bx - 99, by)     # on white ring (90..108)
     center = sample(bx, by)        # glyph center -> white
     logo = sample(200, 200)        # logo body area
     print(key,
