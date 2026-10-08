@@ -3,7 +3,28 @@
 版本号遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)，
 变更记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [未发布]
+## [1.2.0] - 2026-10-08
+
+### 新增 · GitHub 下载加速（dbeaver/windterm/tinyrdm/redis 共用）
+
+- **DBeaver 改为 GitHub Release 组件**：官网 dbeaver.io 的下载链接最终重定向到
+  `dbeaver/dbeaver` 的 Release 资产（国内直连很慢的根因），现在直接从 GitHub API 解析
+  精确版本（结构同 windterm/redis），缓存文件名带上版本号，升级时不会误用旧缓存
+- 新增 `download.githubAccelerators`（默认内置 3 个当前实测可用的加速镜像）：
+  下载 `github.com` 直链时自动叠加「镜像前缀 + 原始地址」候选，HEAD 预检可用者优先，
+  镜像全挂自动回退直链；置 `[]` 可关闭。所有落在 GitHub 的组件下载统一受益
+- GitHub Release 类组件解析新增 `fallbackVersion` 兜底：接口失败且无本地缓存时
+  改用配置的精确版本，不再拼出带 `latest` 的死链
+
+### 修复 · Apifox 安装失败：把 zip 外壳本体误当安装器做 PE 预检
+
+- `innerInstaller` 未配置时，「解壳后取包里体积最大的 exe」回退逻辑被外层 zip 路径
+  短路（`$setupFile` 预先初始化成了 zip 自身路径，回退条件永远不成立），导致拿 zip
+  本体做 PE 校验、误报「缺少 MZ 头」——实际上下载与解壳都已成功
+- 解壳后现在始终重新定位安装器：优先按 `innerInstaller` 名字查找，找不到则取包里
+  体积最大的 exe；PE 预检失败时同步清理解壳临时目录（此前每次失败会在缓存残留约 200MB）
+- 「直启被拒自动改走 Shell 重试」对 zip 壳组件（Apifox）此前必然失败：外层重试还没开始，
+  解壳临时目录就连同安装器一起被删了；现在临时目录保留到重试结束（成功/最终失败）才清理
 
 ### 修复 · PowerShell 5.1 下版本排序错乱（VM 上解析到错误版本的根因）
 
@@ -134,7 +155,8 @@
 - DSH 桌面端是官方 NSIS 安装包，会在“添加/删除程序”里登记，不具备纯绿色形态（脚本会在卸载时一并清理）
 - 需要管理员权限的场景（系统级环境变量、Windows 服务）不在本工具范围内，默认全部只写当前用户
 
-[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.1.1...HEAD
+[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.1.1
 [1.1.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.1.0
 [1.0.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.0.0
