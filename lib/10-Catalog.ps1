@@ -420,7 +420,9 @@ function Get-JetBrainsReleaseEntries {
     # 只挂在 IIU 下且文件名去掉 IC/IU 前缀；IIC 停在 2025.3 GA——所以要合并两条线看。
     param(
         [Parameter(Mandatory = $true)][string]$ApiTemplate,
-        [string[]]$Codes = @('IIC', 'IIU')
+        [string[]]$Codes = @('IIC', 'IIU'),
+        # 最低支持版本：低于它的条目直接丢弃（2025.3 起才是统一分发版，老版本一律不作候选）
+        [string]$MinVersion = ''
     )
     $codeParam = (@($Codes) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join ','
     $api = Format-ComponentTemplate -Template $ApiTemplate -Values @{ code = $codeParam }
@@ -436,6 +438,13 @@ function Get-JetBrainsReleaseEntries {
             $sizeVal = Get-ObjectProperty -Object $zip -Name 'size'
             $parsed = $null
             [void][version]::TryParse($ver, [ref]$parsed)
+            # PS 5.1 的 Sort-Object 无法正确排序 [version] 对象（乱序且不同机器表现一致地错），
+            # 必须换成加权数值键：major*1e9 + minor*1e6 + build*1e3 + revision（缺失段记 0）
+            $sortKey = 0L
+            if ($parsed) {
+                $sortKey = [long]$parsed.Major * 1000000000L + [long]$parsed.Minor * 1000000L +
+                    [long][Math]::Max(0, $parsed.Build) * 1000L + [long][Math]::Max(0, $parsed.Revision)
+            }
             [void]$entries.Add(@{
                 Code        = $codeName
                 Version     = $ver
@@ -443,10 +452,29 @@ function Get-JetBrainsReleaseEntries {
                 Link        = $link
                 Size        = $(if ($sizeVal) { [long]$sizeVal } else { 0 })
                 SortVersion = $(if ($parsed) { $parsed } else { [version]'0.0' })
+                SortKey     = $sortKey
             })
         }
     }
-    return @($entries | Sort-Object -Property @{ Expression = 'SortVersion'; Descending = $true }, @{ Expression = 'Date'; Descending = $true })
+    # 排序不能用 Sort-Object：PS 5.1 对 [version]、以及超过 int32 的大整数键都会排出错误顺序
+    # （pwsh 7 正常，开发机验证发现不了）。这里用手写插入排序，纯 -gt 运算符比较，5.1/7 都可靠。
+    # 条目量级只有几十个，性能无虞。规则：SortKey 降序，同键按日期降序。
+    $sorted = New-Object Collections.ArrayList
+    foreach ($e in $entries) {
+        $idx = $sorted.Count
+        for ($i = 0; $i -lt $sorted.Count; $i++) {
+            $cur = $sorted[$i]
+            if ($e.SortKey -gt $cur.SortKey -or ($e.SortKey -eq $cur.SortKey -and [string]$e.Date -gt [string]$cur.Date)) {
+                $idx = $i; break
+            }
+        }
+        $sorted.Insert($idx, $e)
+    }
+    $minVerLimit = $null
+    if (-not [string]::IsNullOrWhiteSpace($MinVersion) -and [version]::TryParse($MinVersion, [ref]$minVerLimit)) {
+        $sorted = @($sorted | Where-Object { $_.SortVersion -ge $minVerLimit })
+    }
+    return $sorted
 }
 
 function Resolve-DynamicVersions {
@@ -525,6 +553,19 @@ function Resolve-DynamicVersions {
             if ($apiCodes -notcontains $editionCode) { $apiCodes = @($editionCode) + $apiCodes }
         }
         $wanted = [string]$ide.version
+        # 最低版本硬限制：2025.3 起社区/旗舰合并为统一分发版，更老的版本不作任何下载候选
+        $minVerText = [string](Get-ObjectProperty -Object $ide -Name 'minVersion' -Default '2025.3')
+        if ([string]::IsNullOrWhiteSpace($minVerText)) { $minVerText = '2025.3' }
+        $minVer = $null
+        if (-not [version]::TryParse($minVerText, [ref]$minVer)) { $minVerText = '2025.3'; $minVer = [version]'2025.3' }
+        if ($wanted -ne 'latest' -and $wanted -match '^\d{4}(\.\d+)+$') {
+            $wantedVer = $null
+            if ([version]::TryParse($wanted, [ref]$wantedVer) -and $wantedVer -lt $minVer) {
+                throw ("配置的 IDEA 版本 $wanted 低于脚本支持的最低版本 $minVerText。" + [Environment]::NewLine +
+                    "2025.3 起社区/旗舰合并为统一分发版，旧版本（≤2025.2）的下载地址已陆续下线；" + [Environment]::NewLine +
+                    "请把 components.ide.version 改为 $minVerText 及以上（支持版本线写法，如 2026.2）。")
+            }
+        }
         $info = @{ Version = $wanted; Urls = @(); FileName = ''; Size = 0; Source = ''; Code = '' }
 
         # 发布列表（合并多产品代码、按版本号新→旧）。latest 与「版本线写法」都从这里解析，
@@ -533,7 +574,7 @@ function Resolve-DynamicVersions {
         if (-not $offline) {
             try {
                 Write-Debug2 ("解析 IDE 发布列表（产品代码: {0}）" -f ($apiCodes -join ', '))
-                $releases = Get-JetBrainsReleaseEntries -ApiTemplate ([string]$ide.releaseApi) -Codes $apiCodes
+                $releases = Get-JetBrainsReleaseEntries -ApiTemplate ([string]$ide.releaseApi) -Codes $apiCodes -MinVersion $minVerText
             } catch {
                 Write-Warn "获取 IntelliJ IDEA 发布列表失败（将改用缓存/配置兜底）: $($_.Exception.Message)"
             }
@@ -543,8 +584,10 @@ function Resolve-DynamicVersions {
             if ($wanted -eq 'latest') {
                 $pick = $releases[0]
             } elseif ($wanted -match '^\d{4}\.\d+$') {
-                # 版本线写法（如 2025.3）：自动取该线最新补丁（2025.3.6.1 这种内部小版本）
-                $pick = @($releases | Where-Object { $_.Version -eq $wanted -or $_.Version -like ($wanted + '.*') } | Select-Object -First 1)[0]
+                # 版本线写法（如 2026.2）：自动取该线最新补丁（2026.2.3 这种内部小版本）。
+                # 显式取版本键最大的匹配，不依赖列表顺序——同线的 GA 别名（2026.2）与补丁（2026.2.3）都匹配时优先补丁
+                $lineHits = @($releases | Where-Object { $_.Version -eq $wanted -or $_.Version -like ($wanted + '.*') })
+                foreach ($c in $lineHits) { if (-not $pick -or $c.SortKey -gt $pick.SortKey) { $pick = $c } }
                 if ($pick -and [string]$pick.Version -ne $wanted) {
                     Write-Info "IDE 版本线 $wanted 当前最新补丁为 $($pick.Version)"
                 }
@@ -569,6 +612,11 @@ function Resolve-DynamicVersions {
         if ($info.Urls.Count -eq 0) {
             if ($wanted -eq 'latest') {
                 $fallback = [string](Get-ObjectProperty -Object $ide -Name 'fallbackVersion' -Default '')
+                $fbGuard = $null
+                if (-not [string]::IsNullOrWhiteSpace($fallback) -and [version]::TryParse($fallback, [ref]$fbGuard) -and $fbGuard -lt $minVer) {
+                    Write-Warn "配置的 fallbackVersion=$fallback 低于最低版本 $minVerText，已忽略（不允许回退到统一分发版之前的老版本）"
+                    $fallback = ''
+                }
                 if (-not [string]::IsNullOrWhiteSpace($fallback)) {
                     Write-Warn "接口、发布列表与缓存都不可用，改用配置中的 fallbackVersion=$fallback"
                     $info.Version = $fallback
@@ -583,6 +631,19 @@ function Resolve-DynamicVersions {
                 $info.Urls = Expand-TemplateList -Templates $ide.urlTemplates -Values @{ version = $wanted }
                 $info.Version = $wanted
                 $info.Source = 'pinned'
+                # 版本线写法且发布列表不可用：改用同线的 fallbackVersion 精确补丁地址，
+                # 保证接口故障/离线时拿到的也是真实存在的内部小版本直链（而不是 GA 别名）
+                if ($wanted -match '^\d{4}\.\d+$') {
+                    $fb = [string](Get-ObjectProperty -Object $ide -Name 'fallbackVersion' -Default '')
+                    $fbVer = $null
+                    if (-not [string]::IsNullOrWhiteSpace($fb) -and $fb -ne $wanted -and $fb -like ($wanted + '.*') -and
+                        [version]::TryParse($fb, [ref]$fbVer) -and $fbVer -ge $minVer) {
+                        Write-Warn "发布列表不可用，版本线 $wanted 改用 fallbackVersion=$fb 的精确地址"
+                        $info.Urls = Expand-TemplateList -Templates $ide.urlTemplates -Values @{ version = $fb }
+                        $info.Version = $fb
+                        $info.Source = 'fallback-version'
+                    }
+                }
             }
         }
 
@@ -619,7 +680,7 @@ function Resolve-DynamicVersions {
                 Write-Warn "版本 $ver 的下载地址当前不可用，尝试回退到最近的正式版本..."
                 try {
                     $all = $releases
-                    if ($all.Count -eq 0) { $all = Get-JetBrainsReleaseEntries -ApiTemplate ([string]$ide.releaseApi) -Codes $apiCodes }
+                    if ($all.Count -eq 0) { $all = Get-JetBrainsReleaseEntries -ApiTemplate ([string]$ide.releaseApi) -Codes $apiCodes -MinVersion $minVerText }
                     foreach ($rel in @($all | Select-Object -First $recentCount)) {
                         $link = [string]$rel.Link
                         if ([string]::IsNullOrWhiteSpace($link)) { continue }
@@ -955,9 +1016,14 @@ function Get-ComponentCatalog {
             $fileName = [string]$Resolved['ide'].FileName
             if ($Resolved['ide'].Size) { $size = [long]$Resolved['ide'].Size }
         }
+        # 2025.3 起为统一分发版（无社区/旗舰之分）：解析出的版本 ≥2025.3 时显示名不再带 Community/Ultimate
+        $unifiedVer = $null
+        [void][version]::TryParse($version, [ref]$unifiedVer)
         $editionName = 'Community'
         if ($edition -eq 'IU') { $editionName = 'Ultimate' }
-        $spec = New-ComponentSpec -Key 'ide' -Name "IntelliJ IDEA $editionName $version" -Kind 'archive' -Comp $ideCfg `
+        $ideName = "IntelliJ IDEA $editionName $version"
+        if ($unifiedVer -and $unifiedVer -ge [version]'2025.3') { $ideName = "IntelliJ IDEA $version" }
+        $spec = New-ComponentSpec -Key 'ide' -Name $ideName -Kind 'archive' -Comp $ideCfg `
             -Values @{ version = $version; edition = $edition } -DefaultDir "idea-$version" `
             -Probe 'bin\idea64.exe' -Configure 'Configure-Ide' -DetectKey 'ide' -Group 'ide'
         $spec.Version = $version

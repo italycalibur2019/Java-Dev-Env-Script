@@ -95,13 +95,14 @@
     },
 
     "ide": {
-      "_说明": "IntelliJ IDEA。2025.3 起社区/旗舰合并为统一分发版（免费功能无需许可），新版本只挂在 IIU 产品代码下且文件名去掉了 IC/IU 前缀（如 idea-2025.3.6.1.win.zip）。version 支持三种写法：latest=全部版本取最新（当前是 2026.x 统一版）；2025.3=版本线写法，自动取该线最新补丁（推荐）；2025.3.6.1=精确版本。edition 只影响 pinned 老版本（≤2025.2）的文件名前缀。",
+      "_说明": "IntelliJ IDEA。2025.3 起社区/旗舰合并为统一分发版（免费功能无需许可），新版本只挂在 IIU 产品代码下且文件名去掉了 IC/IU 前缀（如 idea-2026.2.3.win.zip）。version 支持三种写法：latest=全部版本取最新；2026.2=版本线写法，自动取该线最新补丁（默认，推荐）；2026.2.3=精确版本。minVersion=脚本支持的最低版本（2025.3，统一分发版起点）：发布列表里低于它的条目会被过滤，配置写死更低版本会直接报错。fallbackVersion=接口全部不可用时的离线兜底精确版本（默认为本版本线的最新补丁）。edition 只影响 pinned 老版本（≤2025.2）的文件名前缀。",
       "enabled": true,
       "vendor": "jetbrains",
       "edition": "IC",
       "releaseCode": "",
-      "version": "2025.3",
-      "fallbackVersion": "2025.3",
+      "version": "2026.2",
+      "minVersion": "2025.3",
+      "fallbackVersion": "2026.2.3",
       "dirTemplate": "idea-{version}",
       "releaseApi": "https://data.services.jetbrains.com/products/releases?code={code}&latest=true&type=release",
       "urlTemplates": [

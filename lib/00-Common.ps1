@@ -5,7 +5,7 @@
 # ===========================================================================
 
 $script:ToolName    = 'JavaDevEnv'
-$script:ToolVersion = '1.1.1'
+$script:ToolVersion = '1.1.2'
 $script:UserAgent   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) JavaDevEnv/1.1'
 $script:LogFile     = ''
 $script:LogLevel    = 'Info'
@@ -719,6 +719,16 @@ function Get-RemoteFile {
     [void]$summary.Add('  1) 若内网需要代理：在 config\user.json 里设置 "download": { "proxy": "http://主机:端口" }')
     [void]$summary.Add('  2) 若确实下载不到：手工下载上面的地址，另存为「目标文件名」放进缓存目录，然后重跑脚本（会自动复用缓存）')
     [void]$summary.Add('  3) 也可临时在配置里把该组件 enabled 设为 false 跳过')
+    $notFoundCount = 0
+    foreach ($u in $allCandidates) {
+        $p = $probeInfo[$u]
+        if ($p -and [int]$p.Status -eq 404) { $notFoundCount++ }
+    }
+    if (@($allCandidates).Count -gt 0 -and $notFoundCount -eq @($allCandidates).Count) {
+        [void]$summary.Add('  !! 所有候选都返回 HTTP 404：这些官方地址本身是存在的，404 大概率不是「文件缺失」。')
+        [void]$summary.Add('     常见原因是出口网络/代理把请求劫持后统一回 404：请检查本机 hosts、DNS、防火墙与 download.proxy，')
+        [void]$summary.Add('     并在能正常上网的机器上用 curl.exe -I <地址> 对比（应返回 200）。')
+    }
     throw (($summary) -join [Environment]::NewLine)
 }
 

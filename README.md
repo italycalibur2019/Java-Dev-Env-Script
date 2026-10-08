@@ -178,7 +178,7 @@ install.cmd -Action help                     # 查看完整帮助
 | Node.js | 20.18.0（nodejs.org / npmmirror） | zip 解压；npm 源可切镜像 |
 | dsh | **DSH 桌面端**：官方 `deepseek-harness-<版本>-win-x64.exe`，版本从官方更新清单 `nightly.yml` 解析 | 静默安装（`/S /currentuser /D=<root>\dsh-desktop`），装完直接可用，无需 Node/Python |
 | dsh-cli | `@deepseek-ai/dsh`（npm 全局包，**默认关闭**） | `npm install -g --prefix <root>\node-global`，并生成带 profile 提示的启动器 |
-| IntelliJ IDEA | JetBrains 官方 `windowsZip`（默认 IC 2025.3，API 动态取最新） | zip 解压 + **便携模式**（配置/插件/缓存写在安装目录 `portable\`） |
+| IntelliJ IDEA | JetBrains 官方 `windowsZip`（默认版本线 2026.2，API 动态取最新补丁；最低支持 2025.3 统一分发版） | zip 解压 + **便携模式**（配置/插件/缓存写在安装目录 `portable\`） |
 | PostgreSQL | 17.2 EDB 免安装二进制 | zip 解压 + `initdb` 本地实例，脚本启停（可选开机自启） |
 | Redis | 8.10.2（redis-windows，含 Service 支持） | zip 解压 + 自带 conf，脚本启停 |
 | DBeaver CE | 官方 zip（latest 直链） | zip 解压，工作区指向 `data\dbeaver-workspace` |
@@ -283,7 +283,7 @@ install.cmd -Action help                     # 查看完整帮助
   "components": {
     "jdk":      { "versions": [21, 17], "default": 21 },
     "maven":    { "version": "3.9.9", "settings": { "mirror": "aliyun", "localRepository": "portable" } },
-    "ide":      { "edition": "IU", "version": "2025.3", "portable": true, "vmOptionsHeap": "4096m" },
+    "ide":      { "edition": "IU", "version": "2026.2", "portable": true, "vmOptionsHeap": "4096m" },
     "postgres": { "port": 5433, "password": "dev123456", "databases": ["devdb", "testdb"], "autostart": true,
                   "localeProvider": "icu", "icuLocale": "zh-CN" },
     "redis":    { "port": 6380, "password": "redis123", "maxmemory": "1gb" },
@@ -375,18 +375,20 @@ JDK、IDEA、Redis 的“最新版本”来自官方接口，脚本按下面顺�
 
 1. JetBrains 官方发布列表（IDEA 合并 `IIC`+`IIU` 两个产品代码，按版本号取最新）；
 2. `<root>\cache\versions.json` 里上次解析成功的结果；
-3. 配置里的固定版本（IDEA 用 `components.ide.fallbackVersion`；写 `2025.3` 这种版本线也行，
-   会自动取该线最新补丁，例如 2025.3.6.1）。
+3. 配置里的固定版本（IDEA 用 `components.ide.fallbackVersion`，默认为本版本线最新补丁的
+   精确版本，如 `2026.2.3`）。
 
 每次解析都会打印来源，例如
-`IDE 版本: 2025.3.6.1（来源: JetBrains 发布列表（产品代码 IIU），候选地址 3 个，大小 1.43 GB）`，
+`IDE 版本: 2026.2.3（来源: JetBrains 发布列表（产品代码 IIU），候选地址 3 个，大小 1.56 GB）`，
 看到「来源: 配置的 fallbackVersion」说明前两步都没成功，日志里会同时给出接口报错原因。
 
 > **IDEA 2025.3 起社区版/旗舰版合并为「统一分发版」**（免费功能无需许可）：新版本只挂在
 > `IIU` 产品代码下，下载文件名去掉了 IC/IU 前缀（如 `idea-2025.3.6.1.win.zip`）；
 > `IIC` 停在 2025.3 GA——只查 IIC 会永远拿到旧版本。所以脚本默认合并查询两个代码，
 > `edition` 只影响 pinned 老版本（≤2025.2）的文件名前缀。`version` 支持三种写法：
-> `latest`（全部版本取最新）/ `2025.3`（版本线，自动取最新补丁）/ `2025.3.6.1`（精确版本）。
+> `latest`（全部版本取最新）/ `2026.2`（版本线，自动取最新补丁，默认）/ `2026.2.3`（精确版本）。
+> **最低版本**：脚本只支持 2025.3 及以上（统一分发版起点）——发布列表里 2025.3 以下的条目
+> 会被直接过滤（`components.ide.minVersion`，默认 `2025.3`），配置写死更低版本会报错。
 > 要装其它 JetBrains 产品，直接写 `releaseCode`（例如 `PCP`）并相应改 `urlTemplates`。
 
 **1.2 下载报 404（例如虚拟机里 IDEA 下不下来）？**
