@@ -373,17 +373,21 @@ JDK 复用时要求主版本一致（例如配置 21，机器上是 25 → 会�
 **1.1 版本解析失败（GitHub / JetBrains 接口偶尔 403 或超时）？**
 JDK、IDEA、Redis 的“最新版本”来自官方接口，脚本按下面顺序层层兜底，正常不会中断安装：
 
-1. 官方接口（带 2 次重试，空响应也会重试）；
-2. IDEA 专用：改用**官方发布列表**取最新的、链接可用的正式版本；
-3. `<root>\cache\versions.json` 里上次解析成功的结果；
-4. 配置里的固定版本（IDEA 用 `components.ide.fallbackVersion`）。
+1. JetBrains 官方发布列表（IDEA 合并 `IIC`+`IIU` 两个产品代码，按版本号取最新）；
+2. `<root>\cache\versions.json` 里上次解析成功的结果；
+3. 配置里的固定版本（IDEA 用 `components.ide.fallbackVersion`；写 `2025.3` 这种版本线也行，
+   会自动取该线最新补丁，例如 2025.3.6.1）。
 
-每次解析都会打印来源，例如 `IDE 版本: 2025.3（来源: JetBrains 官方接口，候选地址 6 个，大小 1.42 GB）`，
-看到「来源: 配置的 fallbackVersion」说明前三步都没成功，日志里会同时给出接口报错原因。
+每次解析都会打印来源，例如
+`IDE 版本: 2025.3.6.1（来源: JetBrains 发布列表（产品代码 IIU），候选地址 3 个，大小 1.43 GB）`，
+看到「来源: 配置的 fallbackVersion」说明前两步都没成功，日志里会同时给出接口报错原因。
 
-> JetBrains 接口的产品代码与下载文件名前缀不同：`edition` 用 `IC`/`IU`（决定文件名），
-> 接口用 `IIC`/`IIU`。脚本会在 `releaseCode` 留空时自动换算，一般不用管；
-> 如果要装其它 JetBrains 产品，可以直接写 `releaseCode`（例如 `PCP`）并相应改 `urlTemplates`。
+> **IDEA 2025.3 起社区版/旗舰版合并为「统一分发版」**（免费功能无需许可）：新版本只挂在
+> `IIU` 产品代码下，下载文件名去掉了 IC/IU 前缀（如 `idea-2025.3.6.1.win.zip`）；
+> `IIC` 停在 2025.3 GA——只查 IIC 会永远拿到旧版本。所以脚本默认合并查询两个代码，
+> `edition` 只影响 pinned 老版本（≤2025.2）的文件名前缀。`version` 支持三种写法：
+> `latest`（全部版本取最新）/ `2025.3`（版本线，自动取最新补丁）/ `2025.3.6.1`（精确版本）。
+> 要装其它 JetBrains 产品，直接写 `releaseCode`（例如 `PCP`）并相应改 `urlTemplates`。
 
 **1.2 下载报 404（例如虚拟机里 IDEA 下不下来）？**
 下载前脚本会先对**每个候选地址做 HEAD 预检**，按可用性排序后再下载，所以：

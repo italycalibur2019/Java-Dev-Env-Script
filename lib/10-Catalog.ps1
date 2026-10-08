@@ -414,6 +414,41 @@ function Get-ComponentVersionString {
 # ---------------------------------------------------------------------------
 # 动态版本解析（JDK / IDE / Redis）
 # ---------------------------------------------------------------------------
+function Get-JetBrainsReleaseEntries {
+    # 拉取 JetBrains 发布列表（支持多产品代码合并）并整理成“新→旧”的条目数组。
+    # 2025.3 起 IDEA 社区/旗舰合并为统一分发版：新版本（含 2025.3.x 补丁与 2026.x）
+    # 只挂在 IIU 下且文件名去掉 IC/IU 前缀；IIC 停在 2025.3 GA——所以要合并两条线看。
+    param(
+        [Parameter(Mandatory = $true)][string]$ApiTemplate,
+        [string[]]$Codes = @('IIC', 'IIU')
+    )
+    $codeParam = (@($Codes) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join ','
+    $api = Format-ComponentTemplate -Template $ApiTemplate -Values @{ code = $codeParam }
+    $api = $api -replace '&latest=true', ''
+    $entries = New-Object Collections.ArrayList
+    $json = Get-RestJson -Url $api
+    foreach ($codeName in @($Codes)) {
+        foreach ($rel in @(Get-ObjectProperty -Object $json -Name $codeName)) {
+            $zip = Get-ObjectProperty -Object (Get-ObjectProperty -Object $rel -Name 'downloads') -Name 'windowsZip'
+            $link = [string](Get-ObjectProperty -Object $zip -Name 'link')
+            if ([string]::IsNullOrWhiteSpace($link)) { continue }
+            $ver = [string](Get-ObjectProperty -Object $rel -Name 'version')
+            $sizeVal = Get-ObjectProperty -Object $zip -Name 'size'
+            $parsed = $null
+            [void][version]::TryParse($ver, [ref]$parsed)
+            [void]$entries.Add(@{
+                Code        = $codeName
+                Version     = $ver
+                Date        = [string](Get-ObjectProperty -Object $rel -Name 'date')
+                Link        = $link
+                Size        = $(if ($sizeVal) { [long]$sizeVal } else { 0 })
+                SortVersion = $(if ($parsed) { $parsed } else { [version]'0.0' })
+            })
+        }
+    }
+    return @($entries | Sort-Object -Property @{ Expression = 'SortVersion'; Descending = $true }, @{ Expression = 'Date'; Descending = $true })
+}
+
 function Resolve-DynamicVersions {
     param([hashtable]$Config)
     $resolved = @{}
@@ -475,71 +510,52 @@ function Resolve-DynamicVersions {
     if ($ide.ContainsKey('enabled') -and $ide.enabled) {
         $edition = [string]$ide.edition
         if ([string]::IsNullOrWhiteSpace($edition)) { $edition = 'IC' }
-        # 注意：JetBrains 接口用的产品代码与下载文件名前缀不一样：
-        #   Community(IC) -> IIC，Ultimate(IU) -> IIU
-        # 传错代码时接口仍返回 200，但 JSON 里没有对应字段，会导致“静默解析失败”。
-        $apiCode = [string](Get-ObjectProperty -Object $ide -Name 'releaseCode' -Default '')
-        if ([string]::IsNullOrWhiteSpace($apiCode)) {
-            if ($edition -ieq 'IC') { $apiCode = 'IIC' }
-            elseif ($edition -ieq 'IU') { $apiCode = 'IIU' }
-            else { $apiCode = $edition }
+        # 2025.3 起社区/旗舰合并为「统一分发版」：
+        #   - 新版本（含 2025.3.x 补丁与 2026.x）只挂在 IIU 下，文件名去掉 IC/IU 前缀（如 idea-2025.3.6.1.win.zip）
+        #   - IIC 停在 2025.3 GA；只查 IIC 会永远拿到旧 GA，这正是旧脚本拿到过期版本/404 的根源
+        # 所以除显式指定 releaseCode 外，一律合并查询 IIC+IIU 两个产品代码。
+        $explicitCode = [string](Get-ObjectProperty -Object $ide -Name 'releaseCode' -Default '')
+        if (-not [string]::IsNullOrWhiteSpace($explicitCode)) {
+            $apiCodes = @($explicitCode)
+        } else {
+            $editionCode = $edition
+            if ($edition -ieq 'IC') { $editionCode = 'IIC' }
+            elseif ($edition -ieq 'IU') { $editionCode = 'IIU' }
+            $apiCodes = @('IIC', 'IIU')
+            if ($apiCodes -notcontains $editionCode) { $apiCodes = @($editionCode) + $apiCodes }
         }
         $wanted = [string]$ide.version
-        $info = @{ Version = $wanted; Urls = @(); FileName = ''; Size = 0; Source = '' }
-        if ($wanted -eq 'latest' -and -not $offline) {
-            $api = Format-ComponentTemplate -Template ([string]$ide.releaseApi) -Values @{ code = $apiCode }
+        $info = @{ Version = $wanted; Urls = @(); FileName = ''; Size = 0; Source = ''; Code = '' }
+
+        # 发布列表（合并多产品代码、按版本号新→旧）。latest 与「版本线写法」都从这里解析，
+        # 拿到的是真实直链和真实文件大小。
+        $releases = @()
+        if (-not $offline) {
             try {
-                Write-Debug2 "解析 IDE 最新版本: $api"
-                $json = Get-RestJson -Url $api
-                $release = @(Get-ObjectProperty -Object $json -Name $apiCode)[0]
-                if (-not $release) {
-                    $keys = @($json.PSObject.Properties | ForEach-Object { $_.Name })
-                    Write-Warn "JetBrains 接口返回里没有 '$apiCode' 字段（顶层字段: $($keys -join ', ')），请检查 components.ide.edition/releaseCode"
-                }
-                if ($release) {
-                    $zip = Get-ObjectProperty -Object (Get-ObjectProperty -Object $release -Name 'downloads') -Name 'windowsZip'
-                    $link = [string](Get-ObjectProperty -Object $zip -Name 'link')
-                    if (-not [string]::IsNullOrWhiteSpace($link)) {
-                        $info.Urls = @($link)
-                        $info.FileName = Split-Path -Leaf $link
-                        $sizeVal = Get-ObjectProperty -Object $zip -Name 'size'
-                        if ($sizeVal) { $info.Size = [long]$sizeVal }
-                        $info.Source = 'official-api'
-                    }
-                    $ver = [string](Get-ObjectProperty -Object $release -Name 'version')
-                    if ($ver) { $info.Version = $ver }
-                }
+                Write-Debug2 ("解析 IDE 发布列表（产品代码: {0}）" -f ($apiCodes -join ', '))
+                $releases = Get-JetBrainsReleaseEntries -ApiTemplate ([string]$ide.releaseApi) -Codes $apiCodes
             } catch {
-                Write-Warn "获取 IntelliJ IDEA 最新版本失败（将改用发布列表/缓存兜底）: $($_.Exception.Message)"
+                Write-Warn "获取 IntelliJ IDEA 发布列表失败（将改用缓存/配置兜底）: $($_.Exception.Message)"
             }
         }
-        # 兜底 1：latest 接口不可用时，改用“完整发布列表”，取最新的、链接可用的正式版本
-        # （比直接跳到配置里写死的 fallbackVersion 靠谱：拿到的是真实版本号和真实文件大小）
-        if ($info.Urls.Count -eq 0 -and $wanted -eq 'latest' -and -not $offline) {
-            try {
-                $listApi = (Format-ComponentTemplate -Template ([string]$ide.releaseApi) -Values @{ code = $apiCode }) -replace '&latest=true', ''
-                Write-Debug2 "改用发布列表解析 IDE 版本: $listApi"
-                $all = Get-RestJson -Url $listApi
-                $tried = 0
-                foreach ($rel in @(Get-ObjectProperty -Object $all -Name $apiCode)) {
-                    $zip = Get-ObjectProperty -Object (Get-ObjectProperty -Object $rel -Name 'downloads') -Name 'windowsZip'
-                    $link = [string](Get-ObjectProperty -Object $zip -Name 'link')
-                    if ([string]::IsNullOrWhiteSpace($link)) { continue }
-                    $tried++
-                    if ($tried -gt 5) { break }
-                    if ((Test-RemoteUrl -Url $link -TimeoutSeconds 15).Ok) {
-                        $info.Urls = @($link)
-                        $info.FileName = Split-Path -Leaf $link
-                        $sizeVal = Get-ObjectProperty -Object $zip -Name 'size'
-                        if ($sizeVal) { $info.Size = [long]$sizeVal }
-                        $ver = [string](Get-ObjectProperty -Object $rel -Name 'version')
-                        if ($ver) { $info.Version = $ver }
-                        $info.Source = 'release-list'
-                        break
-                    }
+        $pick = $null
+        if ($releases.Count -gt 0) {
+            if ($wanted -eq 'latest') {
+                $pick = $releases[0]
+            } elseif ($wanted -match '^\d{4}\.\d+$') {
+                # 版本线写法（如 2025.3）：自动取该线最新补丁（2025.3.6.1 这种内部小版本）
+                $pick = @($releases | Where-Object { $_.Version -eq $wanted -or $_.Version -like ($wanted + '.*') } | Select-Object -First 1)[0]
+                if ($pick -and [string]$pick.Version -ne $wanted) {
+                    Write-Info "IDE 版本线 $wanted 当前最新补丁为 $($pick.Version)"
                 }
-            } catch {
-                Write-Debug2 "获取 IDE 发布列表失败: $($_.Exception.Message)"
+            }
+            if ($pick) {
+                $info.Version = [string]$pick.Version
+                $info.Urls = @([string]$pick.Link)
+                $info.FileName = Split-Path -Leaf ([string]$pick.Link)
+                $info.Size = [long]$pick.Size
+                $info.Source = 'release-list'
+                $info.Code = [string]$pick.Code
             }
         }
         if ($info.Urls.Count -eq 0 -and $cache.ContainsKey('ide') -and $wanted -eq 'latest') {
@@ -602,13 +618,12 @@ function Resolve-DynamicVersions {
             if ($recentCount -gt 0) {
                 Write-Warn "版本 $ver 的下载地址当前不可用，尝试回退到最近的正式版本..."
                 try {
-                    $listApi = (Format-ComponentTemplate -Template ([string]$ide.releaseApi) -Values @{ code = $apiCode }) -replace '&latest=true', ''
-                    $all = Get-RestJson -Url $listApi
-                    foreach ($rel in @(Get-ObjectProperty -Object $all -Name $apiCode | Select-Object -First $recentCount)) {
-                        $zip = Get-ObjectProperty -Object (Get-ObjectProperty -Object $rel -Name 'downloads') -Name 'windowsZip'
-                        $link = [string](Get-ObjectProperty -Object $zip -Name 'link')
+                    $all = $releases
+                    if ($all.Count -eq 0) { $all = Get-JetBrainsReleaseEntries -ApiTemplate ([string]$ide.releaseApi) -Codes $apiCodes }
+                    foreach ($rel in @($all | Select-Object -First $recentCount)) {
+                        $link = [string]$rel.Link
                         if ([string]::IsNullOrWhiteSpace($link)) { continue }
-                        $relVer = [string](Get-ObjectProperty -Object $rel -Name 'version')
+                        $relVer = [string]$rel.Version
                         Write-Warn "  回退候选: $relVer -> $link"
                         if (-not $primary.Contains($link)) { [void]$primary.Add($link) }
                         $cdn = $link -replace '^https://download\.jetbrains\.com/', 'https://download-cdn.jetbrains.com/'
@@ -627,7 +642,7 @@ function Resolve-DynamicVersions {
         $sourceText = '配置指定'
         switch ([string]$info.Source) {
             'official-api' { $sourceText = 'JetBrains 官方接口' }
-            'release-list' { $sourceText = 'JetBrains 发布列表' }
+            'release-list' { $sourceText = 'JetBrains 发布列表' + $(if ($info.Code) { "（产品代码 $($info.Code)）" } else { '' }) }
             'cache' { $sourceText = '本地缓存 versions.json' }
             'fallback-version' { $sourceText = '配置的 fallbackVersion' }
         }

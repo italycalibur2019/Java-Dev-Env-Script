@@ -34,9 +34,10 @@
     },
 
     "ide": {
+      "_说明": "version 支持：latest=全部版本取最新；2025.3=版本线写法（自动取该线最新补丁，推荐）；2025.3.6.1=精确版本",
       "enabled": true,
       "edition": "IC",
-      "version": "latest",
+      "version": "2025.3",
       "portable": true,
       "vmOptionsHeap": ""
     },

@@ -95,11 +95,12 @@
     },
 
     "ide": {
+      "_说明": "IntelliJ IDEA。2025.3 起社区/旗舰合并为统一分发版（免费功能无需许可），新版本只挂在 IIU 产品代码下且文件名去掉了 IC/IU 前缀（如 idea-2025.3.6.1.win.zip）。version 支持三种写法：latest=全部版本取最新（当前是 2026.x 统一版）；2025.3=版本线写法，自动取该线最新补丁（推荐）；2025.3.6.1=精确版本。edition 只影响 pinned 老版本（≤2025.2）的文件名前缀。",
       "enabled": true,
       "vendor": "jetbrains",
       "edition": "IC",
       "releaseCode": "",
-      "version": "latest",
+      "version": "2025.3",
       "fallbackVersion": "2025.3",
       "dirTemplate": "idea-{version}",
       "releaseApi": "https://data.services.jetbrains.com/products/releases?code={code}&latest=true&type=release",
