@@ -1364,7 +1364,17 @@ function Install-InstallerComponent {
         $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800
     } catch {
         if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
-        throw (Format-InstallerStartError -ErrorRecord $_ -SetupFile $setupFile -PeBefore $pe)
+        if (-not $pe.Valid) {
+            throw (Format-InstallerStartError -ErrorRecord $_ -SetupFile $setupFile -PeBefore $pe)
+        }
+        # 文件完好却被拒：部分安全软件只拦“控制台进程静默拉起安装器”，不拦用户双击——
+        # 换 Shell 方式（ShellExecuteEx，与用户双击同一路径）重试一次。
+        Write-Warn '直接启动安装器被系统/安全软件拒绝，改用 Shell 方式（与双击同路径）重试…'
+        try {
+            $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800 -UseShellExecute
+        } catch {
+            throw (Format-InstallerStartError -ErrorRecord $_ -SetupFile $setupFile -PeBefore $pe -ShellTried)
+        }
     }
     if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
     if ($r.TimedOut) { throw "安装程序超时未结束（30 分钟）: $setupFile" }

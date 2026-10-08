@@ -345,7 +345,11 @@ function Invoke-Process {
         [switch]$AllowFailure,
         # 输出直通当前控制台（不捕获）。用于会派生“常驻子进程”的命令，
         # 例如 pg_ctl start 会拉起 postgres.exe 并继承输出管道——捕获会导致永久阻塞。
-        [switch]$InheritConsole
+        [switch]$InheritConsole,
+        # 经 Shell（ShellExecuteEx，与用户双击同一路径）启动而非直接 CreateProcess。
+        # 用途：部分安全软件的行为防御只拦“控制台进程静默拉起安装器”，不拦用户双击；
+        # 直启被拒（文件本身完好）时换 Shell 方式重试。注意该模式下不能重定向输出。
+        [switch]$UseShellExecute
     )
     # 说明：这里直接使用 .NET 的 Process 而不是 Start-Process。
     # 实测 PowerShell 5.1 的 Start-Process -PassThru 在部分环境下取不到 ExitCode（返回空），
@@ -355,12 +359,13 @@ function Invoke-Process {
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath
     if (-not [string]::IsNullOrWhiteSpace($argLine)) { $psi.Arguments = $argLine }
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = (-not $InheritConsole)
-    $psi.RedirectStandardError = (-not $InheritConsole)
+    $psi.UseShellExecute = [bool]$UseShellExecute
+    $redirect = (-not $InheritConsole) -and (-not $UseShellExecute)
+    $psi.RedirectStandardOutput = $redirect
+    $psi.RedirectStandardError = $redirect
     $psi.CreateNoWindow = $true
     if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) { $psi.WorkingDirectory = $WorkingDirectory }
-    if (-not $InheritConsole) {
+    if ($redirect) {
         try {
             $encoding = [Console]::OutputEncoding
             if ($encoding) {
@@ -386,7 +391,7 @@ function Invoke-Process {
     try {
         $outTask = $null
         $errTask = $null
-        if (-not $InheritConsole) {
+        if ($redirect) {
             # 异步读取，避免子进程写满 stderr 缓冲区导致死锁
             $outTask = $proc.StandardOutput.ReadToEndAsync()
             $errTask = $proc.StandardError.ReadToEndAsync()
@@ -399,7 +404,7 @@ function Invoke-Process {
         }
         try { $exitCode = $proc.ExitCode } catch { $exitCode = -1 }
 
-        if (-not $InheritConsole) {
+        if ($redirect) {
             # 有界读取：如果命令派生了常驻子进程并继承了输出管道，管道永不关闭，
             # ReadToEnd 会一直阻塞（表现为脚本“卡死”）。这里限时读取后放弃，保证流程继续。
             if ($outTask.Wait(10000)) {
@@ -879,7 +884,9 @@ function Format-InstallerStartError {
     param(
         [Parameter(Mandatory = $true)]$ErrorRecord,
         [Parameter(Mandatory = $true)][string]$SetupFile,
-        [hashtable]$PeBefore = $null
+        [hashtable]$PeBefore = $null,
+        # Shell 方式（双击同路径）重试过仍然失败——基本可断定是行为拦截
+        [switch]$ShellTried
     )
     $lines = New-Object Collections.ArrayList
     $code = 0
@@ -898,6 +905,9 @@ function Format-InstallerStartError {
         if ($code -eq 193 -and [Environment]::Is64BitOperatingSystem -and
             -not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'SysWOW64\kernel32.dll'))) {
             [void]$lines.Add('系统缺少 32 位兼容层（SysWOW64），无法运行 32 位安装器——精简版/魔改系统常见，请更换完整版系统镜像后重试。')
+        } elseif ($code -eq 193 -and $ShellTried) {
+            [void]$lines.Add('直接启动与 Shell 启动（双击同路径）均被拒绝，而文件完好、隔离区通常也无记录——这是安全软件行为拦截的典型形态：只拦“控制台进程静默拉起安装器”，不拦用户双击（360/火绒/Defender 主动防御均可能）。')
+            [void]$lines.Add('处理建议：查看安全软件的拦截/主动防御记录并添加信任；或手动双击缓存目录里的安装器完成安装后重跑本脚本（会自动识别已安装并跳过）。')
         } elseif ($code -eq 193) {
             [void]$lines.Add('镜像结构完整却被系统拒绝执行，通常是安全软件策略（如 Smart App Control/组策略/杀软主动防御）拦截，请查看安全软件的拦截记录。')
         } else {

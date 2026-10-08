@@ -40,6 +40,9 @@
   启动失败时不再抛出难懂的 `not a valid application for this OS platform`，
   而是给出可行动的中文归因——杀毒软件解压后拦截清空（实测 0 字节/PE 残缺均报 Win32 193）、
   精简系统缺 32 位兼容层（SysWOW64）等，附隔离区核查与白名单建议
+- **直启被拒自动改走 Shell 重试**：文件完好但 `CreateProcess` 被拒时（典型为安全软件行为拦截——
+  只拦“控制台进程静默拉起安装器”、不拦用户双击），自动改用与双击同路径的 ShellExecute 再试一次，
+  两种方式都失败才报错并说明归因
 - **32 位 Windows 自动改用官方 win32 安装包**（`Apifox-win32-latest.zip`，`urlTemplates32` 可覆盖）
 
 ## [1.0.0] - 2026-09-30
