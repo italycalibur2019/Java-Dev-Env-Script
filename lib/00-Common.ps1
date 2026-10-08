@@ -5,7 +5,7 @@
 # ===========================================================================
 
 $script:ToolName    = 'JavaDevEnv'
-$script:ToolVersion = '1.1.0'
+$script:ToolVersion = '1.1.1'
 $script:UserAgent   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) JavaDevEnv/1.1'
 $script:LogFile     = ''
 $script:LogLevel    = 'Info'

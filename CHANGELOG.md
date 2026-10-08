@@ -5,6 +5,8 @@
 
 ## [未发布]
 
+## [1.1.1] - 2026-10-08
+
 ### 修复 · IDEA 版本解析（适配 2025.3 统一分发版）
 
 - **适配 IDEA 2025.3 社区/旗舰合并**：合并后新版本（含 2025.3.x 补丁与 2026.x）只挂在 `IIU`
@@ -110,6 +112,7 @@
 - DSH 桌面端是官方 NSIS 安装包，会在“添加/删除程序”里登记，不具备纯绿色形态（脚本会在卸载时一并清理）
 - 需要管理员权限的场景（系统级环境变量、Windows 服务）不在本工具范围内，默认全部只写当前用户
 
-[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.1.0...HEAD
+[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.1.1
 [1.1.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.1.0
 [1.0.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.0.0
