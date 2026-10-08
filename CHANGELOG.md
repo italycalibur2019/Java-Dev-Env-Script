@@ -5,6 +5,8 @@
 
 ## [未发布]
 
+## [1.1.0] - 2026-10-08
+
 ### 新增 · 组件
 
 - **WindTerm**（SSH/SFTP 远程管理终端）：开源便携 zip，版本从 GitHub Release 实时解析，解压即用
@@ -98,5 +100,6 @@
 - DSH 桌面端是官方 NSIS 安装包，会在“添加/删除程序”里登记，不具备纯绿色形态（脚本会在卸载时一并清理）
 - 需要管理员权限的场景（系统级环境变量、Windows 服务）不在本工具范围内，默认全部只写当前用户
 
-[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.0.0...HEAD
+[未发布]: https://github.com/italycalibur2019/Java-Dev-Env-Script/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.1.0
 [1.0.0]: https://github.com/italycalibur2019/Java-Dev-Env-Script/releases/tag/v1.0.0
