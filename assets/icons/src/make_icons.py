@@ -7,9 +7,8 @@ Output: assets/icons/{pgsql,redis}-{start,stop}.ico  (16/24/32/48/64/128/256)
 import os
 from PIL import Image, ImageDraw
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(HERE)
-OUT = os.path.join(REPO, 'assets', 'icons')
+HERE = os.path.dirname(os.path.abspath(__file__))          # assets/icons/src
+OUT = os.path.dirname(HERE)                                # assets/icons
 os.makedirs(OUT, exist_ok=True)
 
 S = 2048          # supersampled canvas
@@ -22,8 +21,8 @@ WHITE = (255, 255, 255, 255)
 RING = (255, 255, 255, 255)
 
 BADGE_C = (386, 386)   # badge center in 512-space
-BADGE_RO = 104         # outer (white ring) radius
-BADGE_RI = 86          # inner colored disc radius
+BADGE_RO = 112         # outer (white ring) radius
+BADGE_RI = 94          # inner colored disc radius
 
 
 def fit_logo(img, box):
@@ -47,15 +46,17 @@ def fit_logo(img, box):
 
 
 def glyph_play(draw, cx, cy):
-    """Right-pointing triangle, optically centered."""
-    pts = [(cx - 30, cy - 52), (cx - 30, cy + 52), (cx + 54, cy)]
+    """Right-pointing triangle, optically centered. 坐标按 512 设计空间给出，此处乘 K 换算到超采样画布。"""
+    k = K
+    pts = [(cx - 42 * k, cy - 72 * k), (cx - 42 * k, cy + 72 * k), (cx + 76 * k, cy)]
     draw.polygon(pts, fill=WHITE)
 
 
 def glyph_stop(draw, cx, cy):
-    side = 112
-    r = 26
-    x0, y0 = cx - side // 2 + 4, cy - side // 2  # +4 optical shift left
+    k = K
+    side = 138 * k
+    r = 30 * k
+    x0, y0 = cx - side // 2 + 4 * k, cy - side // 2  # +4 optical shift left
     draw.rounded_rectangle([x0, y0, x0 + side, y0 + side], radius=r, fill=WHITE)
 
 
@@ -86,7 +87,7 @@ def build(logo_path, kind, out_path):
 
 
 pg = os.path.join(HERE, 'pgsql-logo.png')
-rd = os.path.join(HERE, 'redis-logo.png')
+rd = os.path.join(HERE, 'redis-logo.ico')
 
 results = {}
 results[('pgsql', 'start')] = build(pg, 'start', os.path.join(OUT, 'pgsql-start.ico'))
@@ -114,8 +115,8 @@ for key, img in results.items():
     bx, by = BADGE_C
     def sample(x, y):
         return px[x, y]
-    disc = sample(bx - 40, by)     # inside colored disc, left of glyph
-    ring = sample(bx - 97, by)     # on white ring
+    disc = sample(bx - 90, by)     # inside colored disc, left edge (glyphs never reach there)
+    ring = sample(bx - 103, by)    # on white ring (94..112)
     center = sample(bx, by)        # glyph center -> white
     logo = sample(200, 200)        # logo body area
     print(key,
