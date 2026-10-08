@@ -5,7 +5,7 @@
 # ===========================================================================
 
 $script:ToolName    = 'JavaDevEnv'
-$script:ToolVersion = '1.1.2'
+$script:ToolVersion = '1.2.0'
 $script:UserAgent   = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) JavaDevEnv/1.1'
 $script:LogFile     = ''
 $script:LogLevel    = 'Info'
@@ -602,6 +602,30 @@ function Get-ProxyDescription {
     return '未使用代理（直连）'
 }
 
+function Add-GitHubAccelerators {
+    # 给 github.com 直链叠加加速镜像候选：镜像在前、直链保底。
+    # dbeaver/windterm/tinyrdm/redis 等组件的真实下载都落在 GitHub Release，
+    # 国内直连即使 HEAD 可达，下载吞吐也常常极慢，所以默认镜像优先；
+    # Get-RemoteFile 的预检会按可用性重排，镜像不可用时会自动落到直链。
+    # 配置 download.githubAccelerators 置 [] 可整体关闭。
+    param([string[]]$Urls)
+    $urls = @($Urls | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $bases = Get-ConfigValue -Path 'download.githubAccelerators' -Default $null
+    if ($null -eq $bases) { return $urls }
+    $accelerated = New-Object Collections.ArrayList
+    foreach ($u in $urls) {
+        if ($u -like 'https://github.com/*') {
+            foreach ($b in @($bases)) {
+                $base = ([string]$b).Trim()
+                if ([string]::IsNullOrWhiteSpace($base)) { continue }
+                [void]$accelerated.Add(($base.TrimEnd('/') + '/' + $u))
+            }
+        }
+    }
+    if ($accelerated.Count -eq 0) { return $urls }
+    return (@($accelerated.ToArray()) + $urls)
+}
+
 function Get-RemoteFile {
     param(
         [Parameter(Mandatory = $true)][string[]]$Urls,
@@ -635,7 +659,7 @@ function Get-RemoteFile {
         return @{ Success = $true; Size = 0; Url = $Urls[0]; DryRun = $true }
     }
 
-    $allCandidates = @($Urls | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+    $allCandidates = Add-GitHubAccelerators -Urls @($Urls | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
 
     # 预检（HEAD）：可用的排前面，失败的排后面但仍会尝试一次（有的服务器不支持 HEAD）
     $reachable = New-Object Collections.ArrayList

@@ -6,8 +6,14 @@
   "preferMirrors": "auto",
 
   "download": {
+    "_说明": "githubAccelerators 是 github.com 直链的加速镜像（dbeaver/windterm/tinyrdm/redis 等组件的真实下载都在 GitHub）。预检可用者优先，全部失败自动回退直链；不想走第三方镜像就置 []。",
     "proxy": "",
-    "retries": 3
+    "retries": 3,
+    "githubAccelerators": [
+      "https://gh-proxy.com",
+      "https://ghproxy.net",
+      "https://ghfast.top"
+    ]
   },
 
   "shortcuts": {

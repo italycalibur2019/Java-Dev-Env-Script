@@ -181,7 +181,7 @@ install.cmd -Action help                     # 查看完整帮助
 | IntelliJ IDEA | JetBrains 官方 `windowsZip`（默认版本线 2026.2，API 动态取最新补丁；最低支持 2025.3 统一分发版） | zip 解压 + **便携模式**（配置/插件/缓存写在安装目录 `portable\`） |
 | PostgreSQL | 17.2 EDB 免安装二进制 | zip 解压 + `initdb` 本地实例，脚本启停（可选开机自启） |
 | Redis | 8.10.2（redis-windows，含 Service 支持） | zip 解压 + 自带 conf，脚本启停 |
-| DBeaver CE | 官方 zip（latest 直链） | zip 解压，工作区指向 `data\dbeaver-workspace` |
+| DBeaver CE | GitHub Release 实时解析最新（官网 dbeaver.io 本就重定向到 GitHub；下载走 `download.githubAccelerators` 加速） | zip 解压，工作区指向 `data\dbeaver-workspace` |
 | HeidiSQL | 12.8 便携版（**默认关闭**） | zip 解压 + 生成 `portable_settings.txt` |
 | WindTerm | 2.7.0（GitHub Release 实时解析最新） | 便携 zip 解压即用（SSH/SFTP 终端；首次启动选一次 profiles 目录） |
 | Apifox | 官方固定 latest 链接（`Apifox-windows-latest.zip`） | 官方 zip 里是 NSIS 安装器：解壳后 `/S /currentuser /D=` 静默装进安装目录 |
@@ -307,6 +307,7 @@ install.cmd -Action help                     # 查看完整帮助
 | `preferMirrors` | `auto`（中文系统优先国内镜像）/ `true` / `false` |
 | `download.proxy` | 走代理下载，例如 `http://127.0.0.1:7890` |
 | `download.retries` | 单个地址重试次数（失败会自动换下一个镜像，最后用 BITS 兜底） |
+| `download.githubAccelerators` | GitHub 加速镜像列表（默认内置 3 个可用服务）：dbeaver/windterm/tinyrdm/redis 等组件的真实下载都在 GitHub，脚本会把 `github.com` 直链自动叠加「镜像/直链」候选，预检可用者优先，全部失败回退直链；置 `[]` 关闭 |
 | `env.setUserEnvVars` / `updateUserPath` | 是否写用户环境变量 / 追加 PATH |
 | `env.forceJavaHome` | 机器上已有 JDK 时，是否仍把 `JAVA_HOME` 指向本工具安装的 JDK |
 | `env.mavenOpts` | 默认 `-Dfile.encoding=UTF-8`（中文 Windows 编译乱码的常见解药） |
@@ -369,6 +370,13 @@ JDK 复用时要求主版本一致（例如配置 21，机器上是 25 → 会�
 换镜像：`config\user.json` 里设 `"preferMirrors": true`；或指定代理 `"download.proxy"`。
 脚本按「镜像 → 官方 → BITS」顺序自动重试，已下载的压缩包会缓存在 `<root>\cache`，
 重跑只补缺的部分。
+
+**1.0 GitHub 下载慢（DBeaver / WindTerm / Tiny RDM / Redis 等）？**
+这些组件的真实下载地址都落在 GitHub Release（例如 DBeaver 官网 dbeaver.io 的下载链接，
+最终就是重定向到 `dbeaver/dbeaver` 的 Release 资产），国内直连 GitHub 往往只有几十 KB/s。
+脚本默认内置 3 个**当前实测可用**的加速镜像（`download.githubAccelerators`，可自行增删）：
+下载 github.com 直链时会自动叠加「镜像前缀 + 原始地址」候选，HEAD 预检可用的排前面，
+镜像全挂再回退直链，无需任何配置即可生效；公司网络不允许第三方镜像时置 `[]` 关闭。
 
 **1.1 版本解析失败（GitHub / JetBrains 接口偶尔 403 或超时）？**
 JDK、IDEA、Redis 的“最新版本”来自官方接口，脚本按下面顺序层层兜底，正常不会中断安装：

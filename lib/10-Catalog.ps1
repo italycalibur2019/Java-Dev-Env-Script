@@ -713,10 +713,10 @@ function Resolve-DynamicVersions {
         $resolved['ide'] = $info
     }
 
-    # ---------------- GitHub Release 类组件（redis / windterm / tinyrdm） ----------------
+    # ---------------- GitHub Release 类组件（redis / windterm / tinyrdm / dbeaver） ----------------
     # 这类组件的配置结构完全一致：githubRepo + assetPattern + tagPrefix + urlTemplates/mirrorTemplates，
-    # 差别只在 tag 是否带 v 前缀（WindTerm 用裸版本号 2.7.0，Tiny RDM 用 v1.2.7）。
-    foreach ($ghName in @('redis', 'windterm', 'tinyrdm')) {
+    # 差别只在 tag 是否带 v 前缀（WindTerm/Tiny RDM 用 v 或裸版本号，DBeaver 用裸版本号）。
+    foreach ($ghName in @('redis', 'windterm', 'tinyrdm', 'dbeaver')) {
         $gh = Get-ComponentConfig -Name $ghName
         if (-not ($gh.ContainsKey('enabled') -and $gh.enabled)) { continue }
         if ([string]::IsNullOrWhiteSpace([string](Get-ObjectProperty -Object $gh -Name 'githubRepo' -Default ''))) { continue }
@@ -738,6 +738,14 @@ function Resolve-DynamicVersions {
             if ($cachedInfo.Version -and $cachedInfo.Version -ne 'latest') {
                 Write-Info "使用缓存的 $ghName 版本信息（$($cachedInfo.Version)）"
                 $ver = $cachedInfo.Version
+            }
+        }
+        if ($ver -eq 'latest') {
+            # 接口与缓存都拿不到版本时，退回配置的 fallbackVersion，保证仍有精确下载地址
+            $fb = [string](Get-ObjectProperty -Object $gh -Name 'fallbackVersion' -Default '')
+            if (-not [string]::IsNullOrWhiteSpace($fb)) {
+                Write-Warn "无法在线获取 $ghName 最新版本，改用 fallbackVersion=$fb"
+                $ver = $fb
             }
         }
         $asset = Format-ComponentTemplate -Template ([string]$gh.assetPattern) -Values @{ version = $ver }
@@ -1072,20 +1080,27 @@ function Get-ComponentCatalog {
         [void]$catalog.Add($spec)
     }
 
-    # ---------------- DBeaver ----------------
+    # ---------------- DBeaver（GitHub Release，下载走 githubAccelerators 加速） ----------------
     $dbeaverCfg = Get-ComponentConfig -Name 'dbeaver'
     if ($dbeaverCfg.enabled) {
         $ver = [string]$dbeaverCfg.version
-        $spec = New-ComponentSpec -Key 'dbeaver' -Name 'DBeaver CE' -Kind 'archive' -Comp $dbeaverCfg `
-            -Values @{} -DefaultDir 'dbeaver' `
+        $urls = @()
+        $mirrorUrls = @()
+        $fileName = ''
+        if ($Resolved.ContainsKey('dbeaver')) {
+            $ver = [string]$Resolved['dbeaver'].Version
+            $urls = @($Resolved['dbeaver'].Urls)
+            $fileName = [string]$Resolved['dbeaver'].FileName
+            if ($Resolved['dbeaver'].MirrorUrls) { $mirrorUrls = @($Resolved['dbeaver'].MirrorUrls) }
+        }
+        $spec = New-ComponentSpec -Key 'dbeaver' -Name "DBeaver CE $ver" -Kind 'archive' -Comp $dbeaverCfg `
+            -Values @{ version = $ver } -DefaultDir 'dbeaver' `
             -Probe 'dbeaver.exe' -Configure 'Configure-Dbeaver' -DetectKey 'dbeaver' -Group 'dbtool'
         $spec.Version = $ver
-        if ($ver -eq 'latest') {
-            $spec.Urls = @($dbeaverCfg.urlTemplates[0])
-        } else {
-            $spec.Urls = Expand-TemplateList -Templates $dbeaverCfg.urlTemplates -Values @{ version = $ver }
-        }
-        $spec.FileName = 'dbeaver-ce-win32.win32.x86_64.zip'
+        $spec.Urls = $urls
+        $spec.MirrorUrls = $mirrorUrls
+        if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = 'dbeaver-ce-win32.win32.x86_64.zip' }
+        $spec.FileName = $fileName
         [void]$catalog.Add($spec)
     }
 
@@ -1390,10 +1405,14 @@ function Install-InstallerComponent {
         Write-Info "$($Spec.Name) → 解开安装器外壳 $([IO.Path]::GetFileName($file))"
         try {
             Expand-ArchiveTo -Archive $file -Destination $wrapDir -Force
+            # 解壳后必须从包里重新定位安装器：初始置空。
+            # 若保留外层的 zip 路径，下面的「未找到 → 取最大 exe」回退会被短路，
+            # 导致把 zip 本体送去 PE 预检（误报“缺少 MZ 头”）
+            $setupFile = ''
             $inner = [string](Get-ObjectProperty -Object $Spec.Comp -Name 'innerInstaller' -Default '')
             if (-not [string]::IsNullOrWhiteSpace($inner)) { $setupFile = Find-FileIn -Root $wrapDir -Name $inner -MaxDepth 2 }
             if ([string]::IsNullOrWhiteSpace($setupFile) -or -not (Test-Path -LiteralPath $setupFile)) {
-                # 未指定名字时取包里体积最大的 exe（安装器一定是包里最大的可执行文件）
+                # 未指定名字（或名字没匹配上）时取包里体积最大的 exe（安装器一定是包里最大的可执行文件）
                 $exes = @(Get-ChildItem -LiteralPath $wrapDir -Filter '*.exe' -Recurse -File -ErrorAction SilentlyContinue | Sort-Object Length -Descending)
                 if ($exes.Count -gt 0) { $setupFile = $exes[0].FullName } else { $setupFile = '' }
             }
@@ -1408,6 +1427,7 @@ function Install-InstallerComponent {
     # 避免直接抛出难懂的 “not a valid application for this OS platform”（Win32 193）。
     $pe = Test-PeImage -Path $setupFile
     if (-not $pe.Valid) {
+        if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
         $msg = New-Object Collections.ArrayList
         [void]$msg.Add("安装器不可运行: $setupFile")
         [void]$msg.Add("预检结果: $($pe.Reason)")
@@ -1444,8 +1464,9 @@ function Install-InstallerComponent {
     try {
         $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800
     } catch {
-        if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
+        # 注意：此刻还不能清 $wrapDir——下面的 Shell 重试仍要用临时目录里的安装器文件
         if (-not $pe.Valid) {
+            if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
             throw (Format-InstallerStartError -ErrorRecord $_ -SetupFile $setupFile -PeBefore $pe)
         }
         # 文件完好却被拒：部分安全软件只拦“控制台进程静默拉起安装器”，不拦用户双击——
@@ -1454,6 +1475,7 @@ function Install-InstallerComponent {
         try {
             $r = Invoke-Process -FilePath $setupFile -Arguments $silentArgs -TimeoutSeconds 1800 -UseShellExecute
         } catch {
+            if ($wrapDir) { Remove-PathRobust -Path $wrapDir }
             throw (Format-InstallerStartError -ErrorRecord $_ -SetupFile $setupFile -PeBefore $pe -ShellTried)
         }
     }
