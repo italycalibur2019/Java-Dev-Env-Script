@@ -512,7 +512,7 @@ function Invoke-AutostartAction {
     $count = Register-Autostart -Catalog @($catalog)
     if ($count -eq 0) { Write-Info '没有设置新的自启项（对应开关未打开，或启动目标尚未安装）' }
     Write-Host ('  「启动」文件夹: ' + [Environment]::GetFolderPath('Startup')) -ForegroundColor DarkGray
-    Write-Host '  说明: PostgreSQL / Redis 用静默脚本拉起；DSH 桌面端直接指向其主程序。' -ForegroundColor DarkGray
+    Write-Host '  说明: PostgreSQL / Redis 以隐藏窗口方式拉起（Redis 常驻通知区域托盘，右键可重启/停止）；DSH 桌面端直接指向其主程序。' -ForegroundColor DarkGray
 }
 
 # ---------------------------------------------------------------------------
@@ -784,6 +784,14 @@ function Invoke-UninstallAction {
     }
 
     if ($removeFiles -and (Test-Path -LiteralPath $root)) {
+        # 先结束 Redis 托盘管理器并优雅停止 Redis，避免进程占用文件导致目录删不掉
+        Stop-RedisTrayProcess
+        try {
+            $stopCatalog = Get-ComponentCatalog -Config $Config -Resolved $Resolved
+            foreach ($stopSpec in @($stopCatalog | Where-Object { $_.Key -eq 'redis' })) {
+                if (Test-RedisRunning -Spec $stopSpec) { [void](Stop-RedisServer -Spec $stopSpec) }
+            }
+        } catch { }
         # 先让带安装包的组件（DSH 桌面端）走它们自己的卸载程序，避免留下失效的卸载登记项
         try {
             $instCatalog = Get-ComponentCatalog -Config $Config -Resolved $Resolved

@@ -16,8 +16,11 @@
 ### 新增 · 开机自启
 
 - **PostgreSQL / Redis 开机自启默认开启**（登录时经「启动」文件夹静默拉起，全程无需管理员）：
-  新增专用静默脚本 `pg-autostart.cmd` / `redis-autostart.cmd`（无 pause、无交互提示，失败不挂住登录流程）
+  通过生成的 wscript 隐藏启动器（`pg-autostart.vbs` / `redis-tray.vbs`）拉起，连短暂的黑框也不出现
 - **DSH 桌面端支持开机自启**（`components.dsh.autostart`，默认关闭）
+- **Redis 托盘管理器**（`bin\redis-tray.ps1`，原生 PowerShell WinForms，零第三方依赖）：
+  Redis 改为无窗口后台运行，任务栏不再挂着命令提示符窗口；通知区域小图标支持
+  双击打开日志、右键重启 / 停止 / 退出托盘（保持 Redis 运行）；「Redis-启动/停止」快捷方式与自启项均已切到托盘方案
 - 新增独立动作 `install.cmd -Action autostart`：改完 `user.json` 的自启开关后单独应用，无需重跑完整安装
 - 开关语义完善：`autostart` 改为 `false` 后重跑即移除「启动」文件夹里的旧条目；`uninstall` 一并清理；`doctor` 增加自启检查项
 

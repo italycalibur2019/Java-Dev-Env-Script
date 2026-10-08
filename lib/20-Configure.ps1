@@ -21,6 +21,33 @@ function Write-TextFileBom {
     [IO.File]::WriteAllLines($Path, $Lines, (New-Object Text.UTF8Encoding $true))
 }
 
+function Write-VbsLauncher {
+    # 生成 wscript 隐藏启动器（.vbs）：以 SW_HIDE 逐条运行目标命令行，
+    # 控制台窗口从创建起就是隐藏的——任务栏不会出现任何黑框。
+    # 用途：开机自启与桌面快捷方式经它拉起 cmd/powershell/托盘脚本。
+    # 注意：wscript 按 ANSI（中文系统即 GBK）读取 .vbs，因此这里用「系统默认编码」写文件，
+    #       安装路径包含中文时也能正常工作；写成 UTF-8 反而会乱码导致脚本无法执行。
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string[]]$CommandLines,
+        [switch]$WaitLast   # 仅最后一条命令等待执行完成（前面的并行发出）
+    )
+    if ($script:Options -and $script:Options.DryRun) { Write-Info "[试运行] 生成文件 $Path"; return }
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $lines = New-Object Collections.ArrayList
+    [void]$lines.Add("' JavaDevEnv: windowless launcher (wscript runs the command with SW_HIDE)")
+    [void]$lines.Add('Set sh = CreateObject("WScript.Shell")')
+    $last = $CommandLines.Count - 1
+    for ($i = 0; $i -le $last; $i++) {
+        $wait = 'False'
+        if ($WaitLast -and $i -eq $last) { $wait = 'True' }
+        $escaped = ([string]$CommandLines[$i]).Replace('"', '""')
+        [void]$lines.Add(('sh.Run "' + $escaped + '", 0, ' + $wait))
+    }
+    [IO.File]::WriteAllLines($Path, $lines.ToArray(), [Text.Encoding]::Default)
+}
+
 function Add-SpecShortcut {
     param(
         [hashtable]$Spec,
@@ -453,6 +480,9 @@ function Configure-Postgres {
         "`"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`" -NoProfile -ExecutionPolicy Bypass -File `"$($script:Ctx.Bin)\pg-ensure-db.ps1`" >nul 2>&1",
         'exit /b 0'
     )
+    # 隐藏启动器：登录自启走 vbs（wscript 以 SW_HIDE 拉起上面的 cmd），连 cmd 自身的短暂黑框也不出现
+    Write-VbsLauncher -Path (Join-Path $binOut 'pg-autostart.vbs') `
+        -CommandLines @(('"' + (Join-Path $binOut 'pg-autostart.cmd') + '"')) -WaitLast
     Write-TextFileNoBom -Path (Join-Path $binOut 'psql.cmd') -Lines @(
         '@echo off',
         'setlocal',
@@ -540,11 +570,12 @@ function Start-RedisServer {
     if ($script:Options -and $script:Options.DryRun) { return $true }
     # 注意：Windows 版 Redis 基于 MSYS2，命令行里的 Windows 绝对路径会被改写成 "/E:\..." 而打不开，
     # 因此这里把工作目录设为安装目录并只传配置文件名（相对路径）。
+    # WindowStyle Hidden：Redis 以隐藏窗口启动（任务栏不出现黑框）；托盘管理器负责后续交互。
     $psArgs = @{
         FilePath         = $exe
         ArgumentList     = (ConvertTo-ProcessArgument (Split-Path -Leaf $confFile))
         WorkingDirectory = $Spec.Target
-        WindowStyle      = 'Minimized'
+        WindowStyle      = 'Hidden'
         PassThru         = $true
     }
     try { Start-Process @psArgs | Out-Null } catch { Write-Err "Redis 启动失败: $($_.Exception.Message)"; return $false }
@@ -572,6 +603,17 @@ function Stop-RedisServer {
     }
     Write-Ok 'Redis 已停止'
     return $true
+}
+
+function Stop-RedisTrayProcess {
+    # 结束 Redis 托盘管理器（redis-tray.ps1 的 powershell 宿主），Redis 进程本身不受影响。
+    # 只匹配命令行里带 redis-tray.ps1 的 powershell.exe，避免误伤其他 PowerShell 进程。
+    if ($script:Options -and $script:Options.DryRun) { return }
+    try {
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -eq 'powershell.exe' -and $_.CommandLine -like '*redis-tray.ps1*'
+        } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    } catch { }
 }
 
 function Configure-Redis {
@@ -654,15 +696,231 @@ function Configure-Redis {
     if (-not [string]::IsNullOrWhiteSpace($password)) { $authArg = "-a $password --no-auth-warning" }
 
     $binOut = $script:Ctx.Bin
+    $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+    # ---- Redis 托盘管理器 --------------------------------------------------
+    # Redis 是控制台程序，旧版用 start /min 拉起，任务栏会一直挂着一个最小化黑框。
+    # 现改为：托盘脚本以 CreateNoWindow 方式无窗口启动 Redis，通知区域常驻小图标
+    # （原生 PowerShell WinForms NotifyIcon，不需要第三方软件），右键菜单可重启/停止。
+    $trayPs1 = Join-Path $binOut 'redis-tray.ps1'
+    $trayVbs = Join-Path $binOut 'redis-tray.vbs'
+    $stopVbs = Join-Path $binOut 'redis-stop.vbs'
+    $trayIcon = Get-IconAsset -Name 'redis-start.ico'
+    if ([string]::IsNullOrWhiteSpace($trayIcon)) { $trayIcon = $exe }
+    # 生成内容里的值都放进单引号字符串，先把值里的 ' 转成两个 '
+    $dirEsc = $Spec.Target.Replace("'", "''")
+    $logEsc = $logFile.Replace("'", "''")
+    $cliEsc = $cli.Replace("'", "''")
+    $iconEsc = $trayIcon.Replace("'", "''")
+    $passEsc = $password.Replace("'", "''")
+    $trayBody = @'
+# ===========================================================================
+#  redis-tray.ps1 - Redis 托盘管理器（由 JavaDevEnv 生成，重跑安装会覆盖本文件）
+#  - Redis 以无窗口方式后台运行：任务栏不再出现命令提示符窗口
+#  - 通知区域常驻小图标：双击打开日志；右键菜单可重启 / 停止 / 退出托盘
+# ===========================================================================
+$ErrorActionPreference = 'Continue'
+
+$RedisDir  = '__DIR__'
+$RedisPort = __PORT__
+$RedisPass = '__PASS__'
+$LogFile   = '__LOG__'
+$CliPath   = '__CLI__'
+$IconPath  = '__ICON__'
+$RedisExe  = Join-Path $RedisDir 'redis-server.exe'
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# ---- 单实例：已有托盘在运行时直接退出 ----
+$created = $false
+$mutex = New-Object System.Threading.Mutex($true, 'Local\JavaDevEnv.Redis.Tray', [ref]$created)
+if (-not $created) { exit 0 }
+
+$script:Stopping = $false    # True = 用户主动停止，托盘随后退出
+$script:WasUp = $false
+
+function Test-RedisUp {
+    $c = New-Object System.Net.Sockets.TcpClient
+    try {
+        $async = $c.BeginConnect('127.0.0.1', $RedisPort, $null, $null)
+        if (-not $async.AsyncWaitHandle.WaitOne(600)) { return $false }
+        $c.EndConnect($async)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        $c.Close()
+    }
+}
+
+function Start-RedisHidden {
+    if (Test-RedisUp) { return $true }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $RedisExe
+    $psi.Arguments = 'redis-dev.conf'
+    $psi.WorkingDirectory = $RedisDir
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    try { [System.Diagnostics.Process]::Start($psi) | Out-Null } catch { return $false }
+    for ($i = 0; $i -lt 15; $i++) {
+        Start-Sleep -Milliseconds 700
+        if (Test-RedisUp) { return $true }
+    }
+    return $false
+}
+
+function Stop-RedisGraceful {
+    $cliArgs = @('-h', '127.0.0.1', '-p', "$RedisPort")
+    if ($RedisPass) { $cliArgs += @('-a', $RedisPass, '--no-auth-warning') }
+    $cliArgs += @('shutdown', 'nosave')
+    try { & $CliPath @cliArgs 2>$null | Out-Null } catch { }
+    for ($i = 0; $i -lt 10; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (-not (Test-RedisUp)) { return $true }
+    }
+    Get-Process -Name 'redis-server' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -ieq $RedisExe } |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    return $true
+}
+
+function Open-RedisLog {
+    try {
+        if (Test-Path -LiteralPath $LogFile) { Start-Process 'notepad.exe' $LogFile | Out-Null }
+        else { Start-Process 'notepad.exe' | Out-Null }
+    } catch { }
+}
+
+$icon = New-Object System.Windows.Forms.NotifyIcon
+$iconText = "Redis 127.0.0.1:$RedisPort（JavaDevEnv）"
+if ($iconText.Length -gt 63) { $iconText = $iconText.Substring(0, 63) }
+$icon.Text = $iconText
+$iconLoaded = $false
+if ($IconPath -and (Test-Path -LiteralPath $IconPath)) {
+    try { $icon.Icon = New-Object System.Drawing.Icon($IconPath); $iconLoaded = $true } catch { }
+}
+if (-not $iconLoaded) {
+    try { $icon.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($RedisExe); $iconLoaded = $true } catch { }
+}
+if (-not $iconLoaded) { $icon.Icon = [System.Drawing.SystemIcons]::Application }
+
+$menu = New-Object System.Windows.Forms.ContextMenuStrip
+$statusItem = New-Object System.Windows.Forms.ToolStripMenuItem('Redis 检测中...')
+$statusItem.Enabled = $false
+[void]$menu.Items.Add($statusItem)
+$logItem = New-Object System.Windows.Forms.ToolStripMenuItem('打开日志(&L)')
+$restartItem = New-Object System.Windows.Forms.ToolStripMenuItem('重启 Redis(&R)')
+$stopItem = New-Object System.Windows.Forms.ToolStripMenuItem('停止 Redis 并退出(&S)')
+$quitItem = New-Object System.Windows.Forms.ToolStripMenuItem('退出托盘（保持 Redis 运行）(&X)')
+[void]$menu.Items.Add($logItem)
+[void]$menu.Items.Add($restartItem)
+[void]$menu.Items.Add($stopItem)
+[void]$menu.Items.Add($quitItem)
+$icon.ContextMenuStrip = $menu
+
+$logItem.add_Click({ Open-RedisLog })
+$icon.add_DoubleClick({ Open-RedisLog })
+
+$restartItem.add_Click({
+    $statusItem.Text = 'Redis 重启中...'
+    [void](Stop-RedisGraceful)
+    Start-Sleep -Milliseconds 300
+    if (Start-RedisHidden) {
+        $script:Stopping = $false
+        $script:WasUp = $true
+        $icon.ShowBalloonTip(2000, 'Redis', 'Redis 已重启', [System.Windows.Forms.ToolTipIcon]::Info)
+    } else {
+        $icon.ShowBalloonTip(4000, 'Redis', 'Redis 重启失败，请查看日志', [System.Windows.Forms.ToolTipIcon]::Error)
+    }
+})
+
+$stopItem.add_Click({
+    $script:Stopping = $true
+    $statusItem.Text = 'Redis 停止中...'
+    [void](Stop-RedisGraceful)
+})
+
+$quitItem.add_Click({
+    $timer.Stop()
+    $icon.Visible = $false
+    [System.Windows.Forms.Application]::Exit()
+})
+
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 1500
+$timer.add_Tick({
+    if (Test-RedisUp) {
+        $proc = Get-Process -Name 'redis-server' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -ieq $RedisExe } | Select-Object -First 1
+        $who = '外部实例'
+        if ($proc) { $who = "PID $($proc.Id)" }
+        $statusItem.Text = "Redis 运行中（$who）- 127.0.0.1:$RedisPort"
+        if (-not $script:WasUp) {
+            $script:WasUp = $true
+            $icon.ShowBalloonTip(1500, 'Redis', "Redis 已就绪 127.0.0.1:$RedisPort", [System.Windows.Forms.ToolTipIcon]::Info)
+        }
+    } else {
+        $statusItem.Text = "Redis 已停止 - 127.0.0.1:$RedisPort"
+        if ($script:WasUp -and -not $script:Stopping) {
+            $icon.ShowBalloonTip(3000, 'Redis', 'Redis 进程已退出', [System.Windows.Forms.ToolTipIcon]::Warning)
+        }
+        $script:WasUp = $false
+        if ($script:Stopping) {
+            $timer.Stop()
+            $icon.Visible = $false
+            [System.Windows.Forms.Application]::Exit()
+        }
+    }
+})
+
+if (Start-RedisHidden) {
+    $script:WasUp = $true
+} else {
+    $icon.ShowBalloonTip(4000, 'Redis', 'Redis 启动失败，请查看日志', [System.Windows.Forms.ToolTipIcon]::Error)
+}
+$timer.Start()
+[System.Windows.Forms.Application]::Run()
+
+try { $icon.Visible = $false; $icon.Dispose() } catch { }
+try { $mutex.ReleaseMutex() } catch { }
+'@
+    $trayBody = $trayBody.Replace('__DIR__', $dirEsc).Replace('__PORT__', [string]$port).Replace('__PASS__', $passEsc).Replace('__LOG__', $logEsc).Replace('__CLI__', $cliEsc).Replace('__ICON__', $iconEsc)
+    Write-TextFileBom -Path $trayPs1 -Lines ($trayBody -split "`r?`n")
+
+    # wscript 隐藏启动器：登录自启与快捷方式经它拉起托盘，全程无黑框
+    Write-VbsLauncher -Path $trayVbs -CommandLines @(
+        ('"' + $psExe + '" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $trayPs1 + '"')
+    )
+    # 停止 vbs：先结束托盘（避免随后冒出「Redis 进程已退出」的提示气泡），再隐藏执行 redis-stop.cmd
+    $trayKillCmd = ('"' + $psExe + '" -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq ''powershell.exe'' -and $_.CommandLine -like ''*redis-tray.ps1*'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"')
+    Write-VbsLauncher -Path $stopVbs -CommandLines @(
+        $trayKillCmd,
+        ('"' + (Join-Path $binOut 'redis-stop.cmd') + '"')
+    ) -WaitLast
+    # 旧版本遗留的自启脚本已由 redis-tray.vbs 取代，顺手清掉
+    $staleAutostart = Join-Path $binOut 'redis-autostart.cmd'
+    if (Test-Path -LiteralPath $staleAutostart) { Remove-Item -LiteralPath $staleAutostart -Force -ErrorAction SilentlyContinue }
+
+    # 双击启动：拉起托盘（Redis 由托盘无窗口启动），窗口只停留几秒做启动结果反馈
     Write-TextFileNoBom -Path (Join-Path $binOut 'redis-start.cmd') -Lines @(
         '@echo off',
         'setlocal',
-        "cd /d `"$($Spec.Target)`"",
-        "start `"Redis $port`" /min `"$exe`" `"redis-dev.conf`"",
-        'timeout /t 2 >nul',
-        "`"$cli`" -h 127.0.0.1 -p $port $authArg ping",
-        'if errorlevel 1 (echo [ERROR] Redis failed to start & pause & exit /b 1)',
-        'echo [OK] Redis started.',
+        'rem JavaDevEnv: Redis starts windowless via the tray manager (icon in the notification area)',
+        "start `"`" `"%SystemRoot%\System32\wscript.exe`" //B `"$trayVbs`"",
+        'set /a tries=0',
+        ':waitloop',
+        'timeout /t 1 >nul',
+        "`"$cli`" -h 127.0.0.1 -p $port $authArg ping | find /i `"PONG`" >nul 2>&1",
+        'if not errorlevel 1 goto started',
+        'set /a tries+=1',
+        'if %tries% lss 12 goto waitloop',
+        "echo [ERROR] Redis failed to start. Log: $logFile",
+        'pause',
+        'exit /b 1',
+        ':started',
+        'echo [OK] Redis started. Tray icon is in the notification area.',
         'timeout /t 2 >nul',
         'exit /b 0'
     )
@@ -679,28 +937,25 @@ function Configure-Redis {
         'setlocal',
         "`"$cli`" -h 127.0.0.1 -p $port $authArg %*"
     )
-    # 开机自启专用：静默拉起（Redis 的控制台窗口保持最小化，关掉它 = 停掉 Redis）
-    Write-TextFileNoBom -Path (Join-Path $binOut 'redis-autostart.cmd') -Lines @(
-        '@echo off',
-        'setlocal',
-        "cd /d `"$($Spec.Target)`"",
-        "start `"Redis $port`" /min `"$exe`" `"redis-dev.conf`"",
-        'exit /b 0'
-    )
 
     $redisIconStart = Get-IconAsset -Name 'redis-start.ico'
     if ([string]::IsNullOrWhiteSpace($redisIconStart)) { $redisIconStart = [Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,137') }
     $redisIconStop = Get-IconAsset -Name 'redis-stop.ico'
     if ([string]::IsNullOrWhiteSpace($redisIconStop)) { $redisIconStop = [Environment]::ExpandEnvironmentVariables('%SystemRoot%\System32\shell32.dll,131') }
-    Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis-启动' -Target (Join-Path $binOut 'redis-start.cmd') `
-        -Icon $redisIconStart
-    Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis-停止' -Target (Join-Path $binOut 'redis-stop.cmd') `
-        -Icon $redisIconStop
+    Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis-启动' -Target $wscript `
+        -Arguments ('//B "' + $trayVbs + '"') -Icon $redisIconStart
+    Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis-停止' -Target $wscript `
+        -Arguments ('//B "' + $stopVbs + '"') -Icon $redisIconStop
     Add-SpecShortcut -Spec $Spec -Item 'redis' -Name 'Redis 命令行(redis-cli)' -Target (Join-Path $binOut 'redis-cli.cmd') `
         -Icon $cli
 
     if ([bool](Get-ObjectProperty -Object $cfg -Name 'startAfterInstall' -Default $true)) {
-        [void](Start-RedisServer -Spec $Spec -Conf $cfg)
+        if (Start-RedisServer -Spec $Spec -Conf $cfg) {
+            # 安装完成顺带把托盘拉起来（Redis 已在运行，托盘会直接附着显示图标）
+            if (-not ($script:Options -and $script:Options.DryRun)) {
+                try { Start-Process -FilePath $wscript -ArgumentList ('//B "' + $trayVbs + '"') -WindowStyle Hidden | Out-Null } catch { }
+            }
+        }
     }
 
     $markerSource = 'configured'
@@ -1012,7 +1267,8 @@ function New-DbInfoFile {
 
 function Register-Autostart {
     # 登录自启（「启动」文件夹方案，全程不需要管理员权限）：
-    #   - PostgreSQL / Redis：指向 bin 下专用的静默启动脚本（pg-autostart.cmd / redis-autostart.cmd）
+    #   - PostgreSQL：bin\pg-autostart.vbs（wscript 以 SW_HIDE 拉起 pg-autostart.cmd，全程无黑框）
+    #   - Redis：bin\redis-tray.vbs（托盘管理器，Redis 无窗口后台运行 + 通知区域小图标）
     #   - DSH 桌面端：直接指向 DeepSeek Harness.exe（GUI 程序，没有控制台窗口问题）
     # 语义：components.<key>.autostart=true 且目标存在 -> 创建/刷新；autostart=false -> 清掉旧条目。
     # 因此「改配置后重跑 install.cmd / autostart」即可切换自启开关。
@@ -1044,8 +1300,8 @@ function Register-Autostart {
         $target = ''
         $winStyle = 7
         switch ($k.Key) {
-            'postgres' { $target = Join-Path $script:Ctx.Bin 'pg-autostart.cmd' }
-            'redis' { $target = Join-Path $script:Ctx.Bin 'redis-autostart.cmd' }
+            'postgres' { $target = Join-Path $script:Ctx.Bin 'pg-autostart.vbs' }
+            'redis' { $target = Join-Path $script:Ctx.Bin 'redis-tray.vbs' }
             'dsh' {
                 $target = [string]$spec.ProbePath
                 $winStyle = 1   # GUI 程序，正常窗口即可

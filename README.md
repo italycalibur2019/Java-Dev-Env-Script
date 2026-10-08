@@ -120,7 +120,7 @@ D:\JavaDevEnv\
 ├─ jdk-21\  apache-maven-3.9.9\  git-2.46.0\  node-20.18.0\  node-global\
 ├─ idea-2025.3\  dbeaver\  heidisql-12.8\  pgsql-17.2\  redis-8.10.2\  dsh-desktop\
 ├─ windterm-2.7.0\  apifox\  tinyrdm-1.2.7\          SSH 终端 / API 测试 / Redis 可视化
-├─ bin\         pg-start.cmd / pg-stop.cmd / psql.cmd / redis-start.cmd / devshell.cmd / dsh-cli.cmd ...
+├─ bin\         pg-start.cmd / pg-stop.cmd / psql.cmd / redis-start.cmd / redis-tray.ps1 / devshell.cmd / dsh-cli.cmd ...
 ├─ icons\       启停快捷方式用的 .ico（安装时从仓库 assets\icons 复制）
 ├─ data\        postgres\  redis\  dbeaver-workspace\
 ├─ cache\       下载的压缩包（可删，下次重装复用）
@@ -228,7 +228,11 @@ install.cmd -Action help                     # 查看完整帮助
   ```bat
   <root>\bin\redis-start.cmd   <root>\bin\redis-stop.cmd   <root>\bin\redis-cli.cmd
   ```
-- **开机自启（默认已开启）**：`postgres` / `redis` 默认 `autostart: true`，登录后自动拉起；
+  Redis 以**无窗口方式后台运行**：任务栏不会再出现命令提示符窗口，取而代之的是通知区域（托盘）里的
+  一个小图标——双击打开日志，右键菜单可以**重启 / 停止 / 退出托盘（保持 Redis 运行）**。
+  该托盘是脚本生成的原生 PowerShell 程序（`<root>\bin\redis-tray.ps1`），不依赖任何第三方软件。
+- **开机自启（默认已开启）**：`postgres` / `redis` 默认 `autostart: true`，登录后自动拉起
+  （全程隐藏窗口，无黑框；Redis 登录后托盘图标直接就位）；
   `dsh`（DSH 桌面端）默认不跟随登录，想开机就启动它就在配置里把 `components.dsh.autostart` 设为 `true`。
   全程走「启动」文件夹，**无需管理员、无需注册 Windows 服务**；把开关改成 `false` 后重跑
   `install.cmd -Action autostart` 即可移除对应自启项，卸载时也会自动清理。
