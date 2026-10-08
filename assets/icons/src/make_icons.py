@@ -54,10 +54,9 @@ def glyph_play(draw, cx, cy):
 
 def glyph_stop(draw, cx, cy):
     k = K
-    side = 112 * k
-    r = 24 * k
+    side = 96 * k
     x0, y0 = cx - side // 2 + 3 * k, cy - side // 2  # +3 optical shift left
-    draw.rounded_rectangle([x0, y0, x0 + side, y0 + side], radius=r, fill=WHITE)
+    draw.rectangle([x0, y0, x0 + side, y0 + side], fill=WHITE)  # 直角方块，不倒圆角
 
 
 def build(logo_path, kind, out_path):
